@@ -1,0 +1,3 @@
+ALTER TABLE user_profile
+ADD COLUMN name VARCHAR(64) DEFAULT NULL COMMENT 'Display name';
+

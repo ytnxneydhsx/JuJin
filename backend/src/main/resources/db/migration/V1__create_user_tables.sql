@@ -1,0 +1,23 @@
+-- User base table
+CREATE TABLE IF NOT EXISTS user_base (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  account VARCHAR(64) NOT NULL COMMENT 'Account (unique)',
+  password_hash VARCHAR(255) NOT NULL COMMENT 'Password hash',
+  status TINYINT NOT NULL DEFAULT 1 COMMENT 'Status: 0 disabled, 1 active',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_base_account (account)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- User profile table
+CREATE TABLE IF NOT EXISTS user_profile (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  account VARCHAR(64) NOT NULL COMMENT 'Account',
+  avatar_url VARCHAR(512) DEFAULT NULL COMMENT 'Avatar URL',
+  `sign` VARCHAR(255) DEFAULT NULL COMMENT 'Profile signature',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_profile_account (account)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
