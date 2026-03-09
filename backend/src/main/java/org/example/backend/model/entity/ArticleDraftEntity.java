@@ -10,6 +10,7 @@ public class ArticleDraftEntity {
     private Long id;
     private Long userId;
     private Long articleId;
+    private Integer status;
     private String title;
     private String summary;
     private String coverUrl;

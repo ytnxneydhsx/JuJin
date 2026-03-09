@@ -5,7 +5,7 @@ import org.example.backend.common.response.PageResult;
 import org.example.backend.common.response.Result;
 import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleSummaryVO;
-import org.example.backend.service.article.ArticleService;
+import org.example.backend.service.core.article.ArticleService;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

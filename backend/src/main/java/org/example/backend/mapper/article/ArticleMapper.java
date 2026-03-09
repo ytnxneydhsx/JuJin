@@ -1,4 +1,4 @@
-package org.example.backend.mapper.base;
+package org.example.backend.mapper.article;
 
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -26,10 +26,11 @@ public interface ArticleMapper {
                 summary = #{summary},
                 cover_url = #{coverUrl},
                 content = #{content},
-                status = #{status}
+                status = COALESCE(#{status}, status),
+                updated_at = NOW()
             WHERE id = #{articleId}
               AND user_id = #{userId}
-              AND status <> 3
+              AND status IN (1, 2)
             """)
     int updateByIdAndUserId(@Param("articleId") Long articleId,
                             @Param("userId") Long userId,
