@@ -1,4 +1,4 @@
-package org.example.backend.mapper.base;
+package org.example.backend.mapper.user;
 
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;

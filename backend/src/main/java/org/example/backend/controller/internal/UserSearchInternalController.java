@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.backend.common.response.Result;
 import org.example.backend.model.vo.UserSearchRebuildVO;
 import org.example.backend.model.vo.UserSearchSyncVO;
-import org.example.backend.service.search.UserSearchService;
+import org.example.backend.service.search.user.UserSearchService;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

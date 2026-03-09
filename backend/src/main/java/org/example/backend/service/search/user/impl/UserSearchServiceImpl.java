@@ -1,4 +1,4 @@
-package org.example.backend.service.search.impl;
+package org.example.backend.service.search.user.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.example.backend.exception.BizException;
@@ -7,7 +7,7 @@ import org.example.backend.model.dto.UserSearchSource;
 import org.example.backend.model.es.UserSearchDocument;
 import org.example.backend.model.vo.UserSearchVO;
 import org.example.backend.repository.UserSearchRepository;
-import org.example.backend.service.search.UserSearchService;
+import org.example.backend.service.search.user.UserSearchService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;

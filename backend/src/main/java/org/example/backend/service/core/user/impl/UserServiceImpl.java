@@ -1,16 +1,20 @@
-package org.example.backend.service.base.impl;
+package org.example.backend.service.core.user.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.event.user.UserSearchSyncEvent;
 import org.example.backend.exception.BizException;
-import org.example.backend.mapper.base.UserBaseMapper;
-import org.example.backend.mapper.base.UserProfileMapper;
+import org.example.backend.mapper.user.UserAccountMapper;
+import org.example.backend.mapper.user.UserProfileMapper;
 import org.example.backend.model.dto.user.LoginDTO;
 import org.example.backend.model.dto.user.RegisterDTO;
+import org.example.backend.model.dto.user.UserLoginSource;
 import org.example.backend.model.dto.user.UpdatePasswordDTO;
+import org.example.backend.model.entity.UserAccountEntity;
 import org.example.backend.model.vo.UserPublicProfileVO;
 import org.example.backend.model.vo.UserRegisterVO;
-import org.example.backend.service.base.UserBaseService;
-import org.example.backend.service.search.UserSearchService;
+import org.example.backend.service.core.user.UserService;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,13 +22,13 @@ import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
-public class UserBaseServiceImpl implements UserBaseService {
+public class UserServiceImpl implements UserService {
 
     private static final int ACTIVE_STATUS = 1;
 
-    private final UserBaseMapper userBaseMapper;
+    private final UserAccountMapper userAccountMapper;
     private final UserProfileMapper userProfileMapper;
-    private final UserSearchService userSearchService;
+    private final ApplicationEventPublisher eventPublisher;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -32,14 +36,21 @@ public class UserBaseServiceImpl implements UserBaseService {
     @Transactional
     public UserRegisterVO register(RegisterDTO dto) {
         String account = dto.getAccount().trim();
-        if (userBaseMapper.countByAccount(account) > 0) {
-            throw new BizException("ACCOUNT_EXISTS", "Account already exists");
-        }
 
         String passwordHash = passwordEncoder.encode(dto.getPassword());
         String displayName = StringUtils.hasText(dto.getName()) ? dto.getName().trim() : account;
 
-        int baseInserted = userBaseMapper.insertUserBase(account, passwordHash, ACTIVE_STATUS);
+        UserAccountEntity userAccount = new UserAccountEntity();
+        userAccount.setAccount(account);
+        userAccount.setPasswordHash(passwordHash);
+        userAccount.setStatus(ACTIVE_STATUS);
+
+        int baseInserted;
+        try {
+            baseInserted = userAccountMapper.insert(userAccount);
+        } catch (DuplicateKeyException ex) {
+            throw new BizException("ACCOUNT_EXISTS", "Account already exists");
+        }
         if (baseInserted != 1) {
             throw new BizException("REGISTER_FAILED", "Failed to create user base record");
         }
@@ -49,12 +60,12 @@ public class UserBaseServiceImpl implements UserBaseService {
             throw new BizException("REGISTER_FAILED", "Failed to create user profile record");
         }
 
-        Long userId = userBaseMapper.selectIdByAccount(account);
+        Long userId = userAccount.getId();
         if (userId == null) {
             throw new BizException("REGISTER_FAILED", "Failed to fetch generated user id");
         }
 
-        userSearchService.syncByAccount(account);
+        publishUserSearchSyncEvent(account);
         return UserRegisterVO.builder()
                 .userId(userId)
                 .account(account)
@@ -64,64 +75,63 @@ public class UserBaseServiceImpl implements UserBaseService {
     @Override
     public UserRegisterVO login(LoginDTO dto) {
         String account = dto.getAccount().trim();
-        String passwordHash = userBaseMapper.selectPasswordHashByAccount(account);
-        if (!StringUtils.hasText(passwordHash) || !passwordEncoder.matches(dto.getPassword(), passwordHash)) {
+        UserLoginSource loginSource = userAccountMapper.selectLoginSourceByAccount(account);
+        if (loginSource == null
+                || !StringUtils.hasText(loginSource.getPasswordHash())
+                || !passwordEncoder.matches(dto.getPassword(), loginSource.getPasswordHash())) {
             throw new BizException("ACCOUNT_OR_PASSWORD_INVALID", "Account or password is incorrect");
         }
 
-        Integer status = userBaseMapper.selectStatusByAccount(account);
+        Integer status = loginSource.getStatus();
         if (status == null || status != ACTIVE_STATUS) {
             throw new BizException("USER_DISABLED", "User is disabled");
         }
 
-        Long userId = userBaseMapper.selectIdByAccount(account);
+        Long userId = loginSource.getUserId();
         if (userId == null) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
 
         return UserRegisterVO.builder()
                 .userId(userId)
-                .account(account)
+                .account(loginSource.getAccount())
                 .build();
     }
 
     @Override
     @Transactional
-    public void updateSign(Long userId, String sign) {
+    public void updateSign(Long userId, String account, String sign) {
         int affected = userProfileMapper.updateSignByUserId(userId, sign);
         if (affected != 1) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
-        String account = requireAccountByUserId(userId);
-        userSearchService.syncByAccount(account);
+        publishUserSearchSyncEvent(requireAccount(account));
     }
 
     @Override
     @Transactional
-    public void updateAvatar(Long userId, String avatarUrl) {
+    public void updateAvatar(Long userId, String account, String avatarUrl) {
         int affected = userProfileMapper.updateAvatarUrlByUserId(userId, avatarUrl);
         if (affected != 1) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
-        String account = requireAccountByUserId(userId);
-        userSearchService.syncByAccount(account);
+        publishUserSearchSyncEvent(requireAccount(account));
     }
 
     @Override
     @Transactional
-    public void updateName(Long userId, String name) {
+    public void updateName(Long userId, String account, String name) {
         int affected = userProfileMapper.updateNameByUserId(userId, name);
         if (affected != 1) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
-        String account = requireAccountByUserId(userId);
-        userSearchService.syncByAccount(account);
+        publishUserSearchSyncEvent(requireAccount(account));
     }
 
     @Override
     @Transactional
     public void updatePassword(Long userId, UpdatePasswordDTO dto) {
-        String currentHash = userBaseMapper.selectPasswordHashByUserId(userId);
+        String currentHash = userAccountMapper.selectPasswordHashByUserId(userId);
         if (!StringUtils.hasText(currentHash)) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
@@ -133,7 +143,7 @@ public class UserBaseServiceImpl implements UserBaseService {
         }
 
         String newHash = passwordEncoder.encode(dto.getNewPassword());
-        int affected = userBaseMapper.updatePasswordHashByUserId(userId, newHash);
+        int affected = userAccountMapper.updatePasswordHashByUserId(userId, newHash);
         if (affected != 1) {
             throw new BizException("PASSWORD_UPDATE_FAILED", "Failed to update password");
         }
@@ -151,11 +161,14 @@ public class UserBaseServiceImpl implements UserBaseService {
         return profile;
     }
 
-    private String requireAccountByUserId(Long userId) {
-        String account = userBaseMapper.selectAccountById(userId);
+    private String requireAccount(String account) {
         if (!StringUtils.hasText(account)) {
-            throw new BizException("USER_NOT_FOUND", "User not found");
+            throw new BizException("UNAUTHORIZED", "Please login first");
         }
-        return account;
+        return account.trim();
+    }
+
+    private void publishUserSearchSyncEvent(String account) {
+        eventPublisher.publishEvent(new UserSearchSyncEvent(account));
     }
 }

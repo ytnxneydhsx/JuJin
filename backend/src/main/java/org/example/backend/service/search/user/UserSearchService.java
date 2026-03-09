@@ -1,4 +1,4 @@
-package org.example.backend.service.search;
+package org.example.backend.service.search.user;
 
 import org.example.backend.model.vo.UserSearchVO;
 import org.springframework.data.domain.Page;

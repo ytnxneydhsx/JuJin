@@ -4,7 +4,7 @@ import org.example.backend.common.response.PageResult;
 import org.example.backend.common.response.Result;
 import lombok.RequiredArgsConstructor;
 import org.example.backend.model.vo.UserSearchVO;
-import org.example.backend.service.search.UserSearchService;
+import org.example.backend.service.search.user.UserSearchService;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
