@@ -20,6 +20,10 @@ public class ArticleDetailVO {
     private String coverUrl;
     private String content;
     private Integer status;
+    private Long likeCount;
+    private Long favoriteCount;
+    private Boolean liked;
+    private Boolean favorited;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

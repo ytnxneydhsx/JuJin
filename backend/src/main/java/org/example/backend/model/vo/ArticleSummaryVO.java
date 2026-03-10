@@ -18,6 +18,10 @@ public class ArticleSummaryVO {
     private String title;
     private String summary;
     private String coverUrl;
+    private Long likeCount;
+    private Long favoriteCount;
+    private Boolean liked;
+    private Boolean favorited;
     private LocalDateTime publishedAt;
     private LocalDateTime updatedAt;
 }

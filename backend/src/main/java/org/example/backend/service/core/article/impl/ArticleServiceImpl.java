@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.example.backend.event.article.ArticleSearchSyncEvent;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleMapper;
+import org.example.backend.mapper.interaction.ArticleFavoriteMapper;
+import org.example.backend.mapper.interaction.ArticleLikeMapper;
 import org.example.backend.model.dto.article.UpdateArticleDTO;
 import org.example.backend.model.entity.ArticleEntity;
 import org.example.backend.model.vo.ArticleDetailVO;
@@ -18,7 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -26,8 +30,11 @@ public class ArticleServiceImpl implements ArticleService {
 
     private static final int STATUS_PUBLISHED = 1;
     private static final int STATUS_HIDDEN = 2;
+    private static final int RELATION_ACTIVE = 1;
 
     private final ArticleMapper articleMapper;
+    private final ArticleLikeMapper articleLikeMapper;
+    private final ArticleFavoriteMapper articleFavoriteMapper;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -82,7 +89,9 @@ public class ArticleServiceImpl implements ArticleService {
         if (article == null) {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
-        return toDetailVO(article);
+        ArticleDetailVO detail = toDetailVO(article);
+        applyInteractionState(detail, userId);
+        return detail;
     }
 
     @Override
@@ -95,22 +104,25 @@ public class ArticleServiceImpl implements ArticleService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
+        applyInteractionState(records, userId);
         long total = articleMapper.countByUserId(userId);
         return new PageImpl<>(records, pageable, total);
     }
 
     @Override
-    public ArticleDetailVO getPublishedArticle(Long articleId) {
+    public ArticleDetailVO getPublishedArticle(Long viewerUserId, Long articleId) {
         validatePositive("articleId", articleId);
         ArticleEntity article = articleMapper.selectPublishedById(articleId);
         if (article == null) {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
-        return toDetailVO(article);
+        ArticleDetailVO detail = toDetailVO(article);
+        applyInteractionState(detail, viewerUserId);
+        return detail;
     }
 
     @Override
-    public Page<ArticleSummaryVO> listPublishedArticles(Long authorUserId, int page, int size) {
+    public Page<ArticleSummaryVO> listPublishedArticles(Long viewerUserId, Long authorUserId, int page, int size) {
         if (authorUserId != null && authorUserId <= 0) {
             throw new BizException("INVALID_PARAM", "userId must be a positive number");
         }
@@ -121,6 +133,7 @@ public class ArticleServiceImpl implements ArticleService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
+        applyInteractionState(records, viewerUserId);
         long total = articleMapper.countPublished(authorUserId);
         return new PageImpl<>(records, pageable, total);
     }
@@ -156,6 +169,10 @@ public class ArticleServiceImpl implements ArticleService {
                 .title(entity.getTitle())
                 .summary(entity.getSummary())
                 .coverUrl(entity.getCoverUrl())
+                .likeCount(entity.getLikeCount())
+                .favoriteCount(entity.getFavoriteCount())
+                .liked(false)
+                .favorited(false)
                 .publishedAt(entity.getPublishedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
@@ -170,10 +187,46 @@ public class ArticleServiceImpl implements ArticleService {
                 .coverUrl(entity.getCoverUrl())
                 .content(entity.getContent())
                 .status(entity.getStatus())
+                .likeCount(entity.getLikeCount())
+                .favoriteCount(entity.getFavoriteCount())
+                .liked(false)
+                .favorited(false)
                 .publishedAt(entity.getPublishedAt())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
+    }
+
+    private void applyInteractionState(ArticleDetailVO detail, Long viewerUserId) {
+        if (viewerUserId == null || viewerUserId <= 0) {
+            return;
+        }
+        Integer likeStatus = articleLikeMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
+        Integer favoriteStatus = articleFavoriteMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
+        detail.setLiked(likeStatus != null && likeStatus == RELATION_ACTIVE);
+        detail.setFavorited(favoriteStatus != null && favoriteStatus == RELATION_ACTIVE);
+    }
+
+    private void applyInteractionState(List<ArticleSummaryVO> records, Long viewerUserId) {
+        if (records.isEmpty() || viewerUserId == null || viewerUserId <= 0) {
+            return;
+        }
+
+        List<Long> articleIds = records.stream().map(ArticleSummaryVO::getArticleId).toList();
+        Set<Long> likedIds = new HashSet<>(articleLikeMapper.selectArticleIdsByUserIdAndStatus(
+                viewerUserId,
+                RELATION_ACTIVE,
+                articleIds
+        ));
+        Set<Long> favoritedIds = new HashSet<>(articleFavoriteMapper.selectArticleIdsByUserIdAndStatus(
+                viewerUserId,
+                RELATION_ACTIVE,
+                articleIds
+        ));
+        records.forEach(item -> {
+            item.setLiked(likedIds.contains(item.getArticleId()));
+            item.setFavorited(favoritedIds.contains(item.getArticleId()));
+        });
     }
 
     private void publishArticleSearchSyncEvent(Long articleId) {

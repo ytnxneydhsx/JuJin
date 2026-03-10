@@ -15,7 +15,7 @@ public interface ArticleService {
 
     Page<ArticleSummaryVO> listMyArticles(Long userId, int page, int size);
 
-    ArticleDetailVO getPublishedArticle(Long articleId);
+    ArticleDetailVO getPublishedArticle(Long viewerUserId, Long articleId);
 
-    Page<ArticleSummaryVO> listPublishedArticles(Long authorUserId, int page, int size);
+    Page<ArticleSummaryVO> listPublishedArticles(Long viewerUserId, Long authorUserId, int page, int size);
 }

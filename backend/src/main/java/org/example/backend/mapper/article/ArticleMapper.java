@@ -59,6 +59,8 @@ public interface ArticleMapper {
               cover_url AS coverUrl,
               content AS content,
               status AS status,
+              like_count AS likeCount,
+              favorite_count AS favoriteCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -79,6 +81,8 @@ public interface ArticleMapper {
               cover_url AS coverUrl,
               content AS content,
               status AS status,
+              like_count AS likeCount,
+              favorite_count AS favoriteCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -97,6 +101,8 @@ public interface ArticleMapper {
               cover_url AS coverUrl,
               content AS content,
               status AS status,
+              like_count AS likeCount,
+              favorite_count AS favoriteCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -127,6 +133,8 @@ public interface ArticleMapper {
               cover_url AS coverUrl,
               content AS content,
               status AS status,
+              like_count AS likeCount,
+              favorite_count AS favoriteCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -147,4 +155,57 @@ public interface ArticleMapper {
               AND (#{authorUserId} IS NULL OR user_id = #{authorUserId})
             """)
     long countPublished(@Param("authorUserId") Long authorUserId);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM article
+            WHERE id = #{articleId}
+              AND status = 1
+            """)
+    int countPublishedById(@Param("articleId") Long articleId);
+
+    @Select("""
+            SELECT
+              id AS id,
+              like_count AS likeCount,
+              favorite_count AS favoriteCount
+            FROM article
+            WHERE id = #{articleId}
+              AND status = 1
+            """)
+    ArticleEntity selectInteractionStatsById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article
+            SET like_count = like_count + 1
+            WHERE id = #{articleId}
+              AND status = 1
+            """)
+    int incrementLikeCountById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article
+            SET like_count = like_count - 1
+            WHERE id = #{articleId}
+              AND status = 1
+              AND like_count > 0
+            """)
+    int decrementLikeCountById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article
+            SET favorite_count = favorite_count + 1
+            WHERE id = #{articleId}
+              AND status = 1
+            """)
+    int incrementFavoriteCountById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article
+            SET favorite_count = favorite_count - 1
+            WHERE id = #{articleId}
+              AND status = 1
+              AND favorite_count > 0
+            """)
+    int decrementFavoriteCountById(@Param("articleId") Long articleId);
 }
