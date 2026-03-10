@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/me/user/**").authenticated()
                         .requestMatchers("/api/me/draft/**").authenticated()
                         .requestMatchers("/api/me/article/**").authenticated()
+                        .requestMatchers("/api/me/comment/**").authenticated()
                         .anyRequest().permitAll()
                 )
                 .exceptionHandling(ex -> ex
