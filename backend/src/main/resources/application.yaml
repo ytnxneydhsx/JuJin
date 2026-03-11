@@ -1,6 +1,11 @@
 spring:
   application:
     name: backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/juejin?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${SPRING_DATASOURCE_USERNAME:huangnv}
+    password: ${SPRING_DATASOURCE_PASSWORD:11447}
+    driver-class-name: com.mysql.cj.jdbc.Driver
   elasticsearch:
     uris: ${ES_URIS:http://localhost:9200}
   data:

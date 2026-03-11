@@ -33,6 +33,9 @@ public interface UserAccountMapper {
     @Select("SELECT password_hash FROM user_base WHERE id = #{userId}")
     String selectPasswordHashByUserId(@Param("userId") Long userId);
 
+    @Select("SELECT account FROM user_base WHERE id = #{userId}")
+    String selectAccountByUserId(@Param("userId") Long userId);
+
     @Update("""
             UPDATE user_base
             SET password_hash = #{passwordHash}

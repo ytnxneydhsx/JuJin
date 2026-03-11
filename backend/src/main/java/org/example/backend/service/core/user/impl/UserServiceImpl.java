@@ -105,7 +105,7 @@ public class UserServiceImpl implements UserService {
         if (affected != 1) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
-        publishUserSearchSyncEvent(requireAccount(account));
+        publishUserSearchSyncEvent(resolveAccount(userId, account));
     }
 
     @Override
@@ -115,7 +115,7 @@ public class UserServiceImpl implements UserService {
         if (affected != 1) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
-        publishUserSearchSyncEvent(requireAccount(account));
+        publishUserSearchSyncEvent(resolveAccount(userId, account));
     }
 
     @Override
@@ -125,7 +125,7 @@ public class UserServiceImpl implements UserService {
         if (affected != 1) {
             throw new BizException("USER_NOT_FOUND", "User not found");
         }
-        publishUserSearchSyncEvent(requireAccount(account));
+        publishUserSearchSyncEvent(resolveAccount(userId, account));
     }
 
     @Override
@@ -161,9 +161,13 @@ public class UserServiceImpl implements UserService {
         return profile;
     }
 
-    private String requireAccount(String account) {
+    private String resolveAccount(Long userId, String account) {
         if (!StringUtils.hasText(account)) {
-            throw new BizException("UNAUTHORIZED", "Please login first");
+            String accountFromDb = userAccountMapper.selectAccountByUserId(userId);
+            if (!StringUtils.hasText(accountFromDb)) {
+                throw new BizException("USER_NOT_FOUND", "User not found");
+            }
+            return accountFromDb.trim();
         }
         return account.trim();
     }
