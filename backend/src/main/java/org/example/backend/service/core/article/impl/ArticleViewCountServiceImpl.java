@@ -35,6 +35,23 @@ public class ArticleViewCountServiceImpl implements ArticleViewCountService {
         return viewCount == null ? (mysqlBaseCount == null ? 0L : mysqlBaseCount) : viewCount;
     }
 
+    @Override
+    public long getViewCount(Long articleId, Long mysqlBaseCount) {
+        String key = buildKey(articleId);
+        String value = stringRedisTemplate.opsForValue().get(key);
+        if (StringUtils.hasText(value)) {
+            if (cacheProperties.getTtlSeconds() > 0) {
+                stringRedisTemplate.expire(key, ttl());
+            }
+            try {
+                return Math.max(0L, Long.parseLong(value));
+            } catch (NumberFormatException ex) {
+                log.warn("Skip invalid cached view count, articleId={}, value={}", articleId, value);
+            }
+        }
+        return mysqlBaseCount == null ? 0L : Math.max(0L, mysqlBaseCount);
+    }
+
     @Scheduled(fixedDelayString = "${app.view-count-cache.flush-interval-ms:60000}")
     public void flushToMysql() {
         Set<String> keys = stringRedisTemplate.keys(cacheProperties.getKeyPrefix() + "*");
@@ -52,6 +69,7 @@ public class ArticleViewCountServiceImpl implements ArticleViewCountService {
             }
             try {
                 long viewCount = Long.parseLong(value);
+                articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
                 articleMapper.updateViewCountById(articleId, viewCount);
             } catch (NumberFormatException ex) {
                 log.warn("Skip flush invalid view count value, key={}, value={}", key, value);

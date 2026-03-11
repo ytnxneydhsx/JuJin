@@ -25,7 +25,6 @@ public interface ArticleMapper {
             SET title = #{title},
                 summary = #{summary},
                 cover_url = #{coverUrl},
-                content = #{content},
                 status = COALESCE(#{status}, status),
                 updated_at = NOW()
             WHERE id = #{articleId}
@@ -37,7 +36,6 @@ public interface ArticleMapper {
                             @Param("title") String title,
                             @Param("summary") String summary,
                             @Param("coverUrl") String coverUrl,
-                            @Param("content") String content,
                             @Param("status") Integer status);
 
     @Update("""
@@ -52,67 +50,71 @@ public interface ArticleMapper {
 
     @Select("""
             SELECT
-              id AS id,
-              user_id AS userId,
-              title AS title,
-              summary AS summary,
-              cover_url AS coverUrl,
-              content AS content,
-              status AS status,
-              like_count AS likeCount,
-              favorite_count AS favoriteCount,
-              view_count AS viewCount,
-              published_at AS publishedAt,
-              created_at AS createdAt,
-              updated_at AS updatedAt
-            FROM article
-            WHERE id = #{articleId}
-              AND user_id = #{userId}
-              AND status <> 3
+              a.id AS id,
+              a.user_id AS userId,
+              a.title AS title,
+              a.summary AS summary,
+              a.cover_url AS coverUrl,
+              COALESCE(c.content, a.content) AS content,
+              a.status AS status,
+              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, a.view_count, 0) AS viewCount,
+              a.published_at AS publishedAt,
+              a.created_at AS createdAt,
+              a.updated_at AS updatedAt
+            FROM article a
+            LEFT JOIN article_content c ON c.article_id = a.id
+            LEFT JOIN article_stats s ON s.article_id = a.id
+            WHERE a.id = #{articleId}
+              AND a.user_id = #{userId}
+              AND a.status <> 3
             """)
     ArticleEntity selectByIdAndUserId(@Param("articleId") Long articleId,
                                       @Param("userId") Long userId);
 
     @Select("""
             SELECT
-              id AS id,
-              user_id AS userId,
-              title AS title,
-              summary AS summary,
-              cover_url AS coverUrl,
-              content AS content,
-              status AS status,
-              like_count AS likeCount,
-              favorite_count AS favoriteCount,
-              view_count AS viewCount,
-              published_at AS publishedAt,
-              created_at AS createdAt,
-              updated_at AS updatedAt
-            FROM article
-            WHERE id = #{articleId}
-              AND status = 1
+              a.id AS id,
+              a.user_id AS userId,
+              a.title AS title,
+              a.summary AS summary,
+              a.cover_url AS coverUrl,
+              COALESCE(c.content, a.content) AS content,
+              a.status AS status,
+              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, a.view_count, 0) AS viewCount,
+              a.published_at AS publishedAt,
+              a.created_at AS createdAt,
+              a.updated_at AS updatedAt
+            FROM article a
+            LEFT JOIN article_content c ON c.article_id = a.id
+            LEFT JOIN article_stats s ON s.article_id = a.id
+            WHERE a.id = #{articleId}
+              AND a.status = 1
             """)
     ArticleEntity selectPublishedById(@Param("articleId") Long articleId);
 
     @Select("""
             SELECT
-              id AS id,
-              user_id AS userId,
-              title AS title,
-              summary AS summary,
-              cover_url AS coverUrl,
-              content AS content,
-              status AS status,
-              like_count AS likeCount,
-              favorite_count AS favoriteCount,
-              view_count AS viewCount,
-              published_at AS publishedAt,
-              created_at AS createdAt,
-              updated_at AS updatedAt
-            FROM article
-            WHERE user_id = #{userId}
-              AND status <> 3
-            ORDER BY updated_at DESC
+              a.id AS id,
+              a.user_id AS userId,
+              a.title AS title,
+              a.summary AS summary,
+              a.cover_url AS coverUrl,
+              a.status AS status,
+              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, a.view_count, 0) AS viewCount,
+              a.published_at AS publishedAt,
+              a.created_at AS createdAt,
+              a.updated_at AS updatedAt
+            FROM article a
+            LEFT JOIN article_stats s ON s.article_id = a.id
+            WHERE a.user_id = #{userId}
+              AND a.status <> 3
+            ORDER BY a.updated_at DESC
             LIMIT #{offset}, #{size}
             """)
     List<ArticleEntity> selectPageByUserId(@Param("userId") Long userId,
@@ -130,32 +132,32 @@ public interface ArticleMapper {
     @Select({
             "<script>",
             "SELECT",
-            "  id AS id,",
-            "  user_id AS userId,",
-            "  title AS title,",
-            "  summary AS summary,",
-            "  cover_url AS coverUrl,",
-            "  content AS content,",
-            "  status AS status,",
-            "  like_count AS likeCount,",
-            "  favorite_count AS favoriteCount,",
-            "  view_count AS viewCount,",
-            "  published_at AS publishedAt,",
-            "  created_at AS createdAt,",
-            "  updated_at AS updatedAt",
-            "FROM article",
-            "WHERE status = 1",
-            "  AND (#{authorUserId} IS NULL OR user_id = #{authorUserId})",
+            "  a.id AS id,",
+            "  a.user_id AS userId,",
+            "  a.title AS title,",
+            "  a.summary AS summary,",
+            "  a.cover_url AS coverUrl,",
+            "  a.status AS status,",
+            "  COALESCE(s.like_count, a.like_count, 0) AS likeCount,",
+            "  COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,",
+            "  COALESCE(s.view_count, a.view_count, 0) AS viewCount,",
+            "  a.published_at AS publishedAt,",
+            "  a.created_at AS createdAt,",
+            "  a.updated_at AS updatedAt",
+            "FROM article a",
+            "LEFT JOIN article_stats s ON s.article_id = a.id",
+            "WHERE a.status = 1",
+            "  AND (#{authorUserId} IS NULL OR a.user_id = #{authorUserId})",
             "ORDER BY",
             "  <choose>",
-            "    <when test='sortBy == \"viewCount\"'>view_count</when>",
-            "    <otherwise>published_at</otherwise>",
+            "    <when test='sortBy == \"viewCount\"'>COALESCE(s.view_count, a.view_count, 0)</when>",
+            "    <otherwise>a.published_at</otherwise>",
             "  </choose>",
             "  <choose>",
             "    <when test='sortOrder == \"asc\"'>ASC</when>",
             "    <otherwise>DESC</otherwise>",
             "  </choose>,",
-            "  id",
+            "  a.id",
             "  <choose>",
             "    <when test='sortOrder == \"asc\"'>ASC</when>",
             "    <otherwise>DESC</otherwise>",
@@ -187,73 +189,111 @@ public interface ArticleMapper {
 
     @Select("""
             SELECT
-              id AS id,
-              like_count AS likeCount,
-              favorite_count AS favoriteCount,
-              view_count AS viewCount
-            FROM article
-            WHERE id = #{articleId}
-              AND status = 1
+              a.id AS id,
+              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, a.view_count, 0) AS viewCount
+            FROM article a
+            LEFT JOIN article_stats s ON s.article_id = a.id
+            WHERE a.id = #{articleId}
+              AND a.status = 1
             """)
     ArticleEntity selectInteractionStatsById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article
-            SET view_count = view_count + 1
-            WHERE id = #{articleId}
-              AND status = 1
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.view_count = a.view_count + 1,
+                s.view_count = s.view_count + 1
+            WHERE a.id = #{articleId}
+              AND a.status = 1
             """)
     int incrementViewCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article
-            SET view_count = #{viewCount}
-            WHERE id = #{articleId}
-              AND status = 1
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.view_count = #{viewCount},
+                s.view_count = #{viewCount}
+            WHERE a.id = #{articleId}
+              AND a.status = 1
             """)
     int updateViewCountById(@Param("articleId") Long articleId,
                             @Param("viewCount") Long viewCount);
 
     @Update("""
-            UPDATE article
-            SET like_count = like_count + 1
-            WHERE id = #{articleId}
-              AND status = 1
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.like_count = a.like_count + 1,
+                s.like_count = s.like_count + 1
+            WHERE a.id = #{articleId}
+              AND a.status = 1
             """)
     int incrementLikeCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article
-            SET like_count = #{likeCount}
-            WHERE id = #{articleId}
-              AND status <> 3
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.like_count = #{likeCount},
+                s.like_count = #{likeCount}
+            WHERE a.id = #{articleId}
+              AND a.status <> 3
             """)
     int updateLikeCountById(@Param("articleId") Long articleId,
                             @Param("likeCount") Long likeCount);
 
     @Update("""
-            UPDATE article
-            SET like_count = like_count - 1
-            WHERE id = #{articleId}
-              AND status = 1
-              AND like_count > 0
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.like_count = a.like_count - 1,
+                s.like_count = s.like_count - 1
+            WHERE a.id = #{articleId}
+              AND a.status = 1
+              AND a.like_count > 0
+              AND s.like_count > 0
             """)
     int decrementLikeCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article
-            SET favorite_count = favorite_count + 1
-            WHERE id = #{articleId}
-              AND status = 1
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.favorite_count = a.favorite_count + 1,
+                s.favorite_count = s.favorite_count + 1
+            WHERE a.id = #{articleId}
+              AND a.status = 1
             """)
     int incrementFavoriteCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article
-            SET favorite_count = favorite_count - 1
-            WHERE id = #{articleId}
-              AND status = 1
-              AND favorite_count > 0
+            UPDATE article a
+            JOIN article_stats s ON s.article_id = a.id
+            SET a.favorite_count = a.favorite_count - 1,
+                s.favorite_count = s.favorite_count - 1
+            WHERE a.id = #{articleId}
+              AND a.status = 1
+              AND a.favorite_count > 0
+              AND s.favorite_count > 0
             """)
     int decrementFavoriteCountById(@Param("articleId") Long articleId);
+
+    @Insert("""
+            INSERT INTO article_content(article_id, content)
+            VALUES(#{articleId}, #{content})
+            ON DUPLICATE KEY UPDATE
+              content = VALUES(content),
+              updated_at = CURRENT_TIMESTAMP
+            """)
+    int upsertContentByArticleId(@Param("articleId") Long articleId,
+                                 @Param("content") String content);
+
+    @Insert("""
+            INSERT INTO article_stats(article_id, like_count, favorite_count, view_count)
+            VALUES(#{articleId}, #{likeCount}, #{favoriteCount}, #{viewCount})
+            ON DUPLICATE KEY UPDATE
+              article_id = article_id
+            """)
+    int ensureStatsByArticleId(@Param("articleId") Long articleId,
+                               @Param("likeCount") Long likeCount,
+                               @Param("favoriteCount") Long favoriteCount,
+                               @Param("viewCount") Long viewCount);
 }

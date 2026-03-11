@@ -141,6 +141,8 @@ public class DraftServiceImpl implements DraftService {
                 throw new BizException("ARTICLE_PUBLISH_FAILED", "Failed to publish article");
             }
             articleId = entity.getId();
+            articleMapper.upsertContentByArticleId(articleId, content);
+            articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
         } else {
             int updated = articleMapper.updateByIdAndUserId(
                     articleId,
@@ -148,12 +150,13 @@ public class DraftServiceImpl implements DraftService {
                     title,
                     trimToNull(draft.getSummary()),
                     trimToNull(draft.getCoverUrl()),
-                    content,
                     ARTICLE_STATUS_PUBLISHED
             );
             if (updated != 1) {
                 throw new BizException("ARTICLE_NOT_FOUND", "Related article not found");
             }
+            articleMapper.upsertContentByArticleId(articleId, content);
+            articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
         }
 
         int draftUpdated = articleDraftMapper.markPublishedByIdAndUserId(

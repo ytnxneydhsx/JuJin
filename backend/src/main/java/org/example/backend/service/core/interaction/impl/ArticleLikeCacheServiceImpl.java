@@ -151,6 +151,7 @@ public class ArticleLikeCacheServiceImpl implements ArticleLikeCacheService {
                 articleLikeMapper.batchUpsertStatusByArticleId(articleId, chunk, RELATION_ACTIVE);
             }
         }
+        articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
         articleMapper.updateLikeCountById(articleId, likeCount);
     }
 

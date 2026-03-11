@@ -88,6 +88,7 @@ public class ArticleInteractionServiceImpl implements ArticleInteractionService 
     }
 
     private ArticleEntity requireInteractionStats(Long articleId) {
+        articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
         ArticleEntity stats = articleMapper.selectInteractionStatsById(articleId);
         if (stats == null) {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");

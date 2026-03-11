@@ -68,12 +68,13 @@ public class ArticleServiceImpl implements ArticleService {
                 title,
                 trimToNull(dto.getSummary()),
                 trimToNull(dto.getCoverUrl()),
-                content,
                 status
         );
         if (affected != 1) {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
+        articleMapper.upsertContentByArticleId(articleId, content);
+        articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
         publishArticleSearchSyncEvent(articleId);
     }
 
@@ -98,6 +99,7 @@ public class ArticleServiceImpl implements ArticleService {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
         ArticleDetailVO detail = toDetailVO(article);
+        detail.setViewCount(articleViewCountService.getViewCount(articleId, detail.getViewCount()));
         detail.setLikeCount(articleLikeCacheService.getLikeCount(articleId, detail.getLikeCount()));
         applyInteractionState(detail, userId);
         return detail;
@@ -113,6 +115,7 @@ public class ArticleServiceImpl implements ArticleService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
+        applyViewCount(records);
         applyLikeCount(records);
         applyInteractionState(records, userId);
         long total = articleMapper.countByUserId(userId);
@@ -159,6 +162,7 @@ public class ArticleServiceImpl implements ArticleService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
+        applyViewCount(records);
         applyLikeCount(records);
         applyInteractionState(records, viewerUserId);
         long total = articleMapper.countPublished(authorUserId);
@@ -266,6 +270,12 @@ public class ArticleServiceImpl implements ArticleService {
     private void applyLikeCount(List<ArticleSummaryVO> records) {
         records.forEach(item -> item.setLikeCount(
                 articleLikeCacheService.getLikeCount(item.getArticleId(), item.getLikeCount())
+        ));
+    }
+
+    private void applyViewCount(List<ArticleSummaryVO> records) {
+        records.forEach(item -> item.setViewCount(
+                articleViewCountService.getViewCount(item.getArticleId(), item.getViewCount())
         ));
     }
 
