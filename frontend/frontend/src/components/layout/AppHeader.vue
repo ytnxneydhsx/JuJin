@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { logout } from '@/api/user'
 
 const router = useRouter()
 const route = useRoute()
@@ -13,12 +14,9 @@ const navItems = [
   { path: '/write', label: 'Write' },
 ]
 
-const userLabel = computed(() => {
-  if (!authStore.isAuthenticated) {
-    return 'Login'
-  }
-  return authStore.state.account || `User ${authStore.state.userId}`
-})
+const userLabel = computed(() =>
+  authStore.state.account || `User ${authStore.state.userId}`,
+)
 
 function goAuth() {
   if (authStore.isAuthenticated) {
@@ -26,6 +24,15 @@ function goAuth() {
     return
   }
   router.push('/login')
+}
+
+async function handleLogout() {
+  try {
+    await logout()
+  } finally {
+    authStore.clearLogin()
+    router.push('/')
+  }
 }
 </script>
 
@@ -44,7 +51,16 @@ function goAuth() {
           {{ item.label }}
         </button>
       </nav>
-      <button class="user-entry" @click="goAuth">{{ userLabel }}</button>
+      <div class="user-area">
+        <button class="user-entry" @click="goAuth">
+          {{ authStore.isAuthenticated ? userLabel : 'Login' }}
+        </button>
+        <div v-if="authStore.isAuthenticated" class="user-menu">
+          <button class="menu-item" @click="router.push('/me')">My Profile</button>
+          <button class="menu-item" @click="router.push('/settings')">Settings</button>
+          <button class="menu-item danger" @click="handleLogout">Logout</button>
+        </div>
+      </div>
     </div>
   </header>
 </template>
