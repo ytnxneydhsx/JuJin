@@ -56,6 +56,15 @@ export interface ArticleCommentVO {
   updatedAt: string
 }
 
+export interface CommentIdVO {
+  commentId: number
+}
+
+export interface CommentLikeToggleVO {
+  commentId: number
+  liked: boolean
+}
+
 export interface ArticleDraftVO {
   draftId: number
   articleId: number | null

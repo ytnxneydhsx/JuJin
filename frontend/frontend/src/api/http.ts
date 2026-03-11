@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type { ApiResult } from '@/types/http'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const baseURL = import.meta.env.VITE_API_BASE_URL || ''
 
 export const http = axios.create({
   baseURL,
