@@ -3,8 +3,48 @@ spring:
     name: backend
   elasticsearch:
     uris: ${ES_URIS:http://localhost:9200}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+  servlet:
+    multipart:
+      max-file-size: ${MULTIPART_MAX_FILE_SIZE:20MB}
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE:20MB}
 
 app:
   security:
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  storage:
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+    access-key: ${STORAGE_ACCESS_KEY:minioadmin}
+    secret-key: ${STORAGE_SECRET_KEY:minioadmin}
+    bucket: ${STORAGE_BUCKET:juejin-media}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost/uploads}
+    max-image-size-bytes: ${STORAGE_MAX_IMAGE_SIZE_BYTES:10485760}
+    allowed-content-types:
+      - image/jpeg
+      - image/png
+      - image/webp
+      - image/gif
+    allowed-extensions:
+      - jpg
+      - jpeg
+      - png
+      - webp
+      - gif
+  view-count-cache:
+    key-prefix: ${VIEW_COUNT_CACHE_KEY_PREFIX:article:view:count:}
+    ttl-seconds: ${VIEW_COUNT_CACHE_TTL_SECONDS:3600}
+    flush-interval-ms: ${VIEW_COUNT_CACHE_FLUSH_INTERVAL_MS:60000}
+  article-like-cache:
+    like-set-key-prefix: ${ARTICLE_LIKE_SET_KEY_PREFIX:article:likes:}
+    like-count-key-prefix: ${ARTICLE_LIKE_COUNT_KEY_PREFIX:article:like_count:}
+    like-init-key-prefix: ${ARTICLE_LIKE_INIT_KEY_PREFIX:article:likes:init:}
+    dirty-article-set-key: ${ARTICLE_LIKE_DIRTY_SET_KEY:article:likes:dirty}
+    ttl-seconds: ${ARTICLE_LIKE_CACHE_TTL_SECONDS:3600}
+    flush-interval-ms: ${ARTICLE_LIKE_FLUSH_INTERVAL_MS:60000}
+    flush-batch-size: ${ARTICLE_LIKE_FLUSH_BATCH_SIZE:500}
