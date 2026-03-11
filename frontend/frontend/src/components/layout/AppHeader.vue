@@ -12,6 +12,7 @@ const navItems = [
   { path: '/', label: 'Home' },
   { path: '/search', label: 'Search' },
   { path: '/write', label: 'Write' },
+  { path: '/drafts', label: 'Drafts' },
 ]
 
 const userLabel = computed(() =>
