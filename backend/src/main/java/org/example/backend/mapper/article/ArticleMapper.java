@@ -61,6 +61,7 @@ public interface ArticleMapper {
               status AS status,
               like_count AS likeCount,
               favorite_count AS favoriteCount,
+              view_count AS viewCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -83,6 +84,7 @@ public interface ArticleMapper {
               status AS status,
               like_count AS likeCount,
               favorite_count AS favoriteCount,
+              view_count AS viewCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -103,6 +105,7 @@ public interface ArticleMapper {
               status AS status,
               like_count AS likeCount,
               favorite_count AS favoriteCount,
+              view_count AS viewCount,
               published_at AS publishedAt,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -124,29 +127,47 @@ public interface ArticleMapper {
             """)
     long countByUserId(@Param("userId") Long userId);
 
-    @Select("""
-            SELECT
-              id AS id,
-              user_id AS userId,
-              title AS title,
-              summary AS summary,
-              cover_url AS coverUrl,
-              content AS content,
-              status AS status,
-              like_count AS likeCount,
-              favorite_count AS favoriteCount,
-              published_at AS publishedAt,
-              created_at AS createdAt,
-              updated_at AS updatedAt
-            FROM article
-            WHERE status = 1
-              AND (#{authorUserId} IS NULL OR user_id = #{authorUserId})
-            ORDER BY published_at DESC, id DESC
-            LIMIT #{offset}, #{size}
-            """)
+    @Select({
+            "<script>",
+            "SELECT",
+            "  id AS id,",
+            "  user_id AS userId,",
+            "  title AS title,",
+            "  summary AS summary,",
+            "  cover_url AS coverUrl,",
+            "  content AS content,",
+            "  status AS status,",
+            "  like_count AS likeCount,",
+            "  favorite_count AS favoriteCount,",
+            "  view_count AS viewCount,",
+            "  published_at AS publishedAt,",
+            "  created_at AS createdAt,",
+            "  updated_at AS updatedAt",
+            "FROM article",
+            "WHERE status = 1",
+            "  AND (#{authorUserId} IS NULL OR user_id = #{authorUserId})",
+            "ORDER BY",
+            "  <choose>",
+            "    <when test='sortBy == \"viewCount\"'>view_count</when>",
+            "    <otherwise>published_at</otherwise>",
+            "  </choose>",
+            "  <choose>",
+            "    <when test='sortOrder == \"asc\"'>ASC</when>",
+            "    <otherwise>DESC</otherwise>",
+            "  </choose>,",
+            "  id",
+            "  <choose>",
+            "    <when test='sortOrder == \"asc\"'>ASC</when>",
+            "    <otherwise>DESC</otherwise>",
+            "  </choose>",
+            "LIMIT #{offset}, #{size}",
+            "</script>"
+    })
     List<ArticleEntity> selectPublishedPage(@Param("authorUserId") Long authorUserId,
                                             @Param("offset") int offset,
-                                            @Param("size") int size);
+                                            @Param("size") int size,
+                                            @Param("sortBy") String sortBy,
+                                            @Param("sortOrder") String sortOrder);
 
     @Select("""
             SELECT COUNT(1)
@@ -168,7 +189,8 @@ public interface ArticleMapper {
             SELECT
               id AS id,
               like_count AS likeCount,
-              favorite_count AS favoriteCount
+              favorite_count AS favoriteCount,
+              view_count AS viewCount
             FROM article
             WHERE id = #{articleId}
               AND status = 1
@@ -177,11 +199,37 @@ public interface ArticleMapper {
 
     @Update("""
             UPDATE article
+            SET view_count = view_count + 1
+            WHERE id = #{articleId}
+              AND status = 1
+            """)
+    int incrementViewCountById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article
+            SET view_count = #{viewCount}
+            WHERE id = #{articleId}
+              AND status = 1
+            """)
+    int updateViewCountById(@Param("articleId") Long articleId,
+                            @Param("viewCount") Long viewCount);
+
+    @Update("""
+            UPDATE article
             SET like_count = like_count + 1
             WHERE id = #{articleId}
               AND status = 1
             """)
     int incrementLikeCountById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article
+            SET like_count = #{likeCount}
+            WHERE id = #{articleId}
+              AND status <> 3
+            """)
+    int updateLikeCountById(@Param("articleId") Long articleId,
+                            @Param("likeCount") Long likeCount);
 
     @Update("""
             UPDATE article

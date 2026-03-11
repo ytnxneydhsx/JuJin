@@ -32,11 +32,20 @@ public class ArticleController {
 
     @GetMapping
     public Result<PageResult<ArticleSummaryVO>> listArticles(@RequestParam(value = "userId", required = false) Long userId,
+                                                             @RequestParam(value = "sortBy", required = false, defaultValue = "publishedAt") String sortBy,
+                                                             @RequestParam(value = "sortOrder", required = false, defaultValue = "desc") String sortOrder,
                                                              @RequestParam(value = "page", defaultValue = "0") int page,
                                                              @RequestParam(value = "size", defaultValue = "20") int size,
                                                              Authentication authentication) {
         Long viewerUserId = tryGetViewerUserId(authentication);
-        Page<ArticleSummaryVO> pageData = articleService.listPublishedArticles(viewerUserId, userId, page, size);
+        Page<ArticleSummaryVO> pageData = articleService.listPublishedArticles(
+                viewerUserId,
+                userId,
+                sortBy,
+                sortOrder,
+                page,
+                size
+        );
         return Result.success(PageResult.from(pageData));
     }
 

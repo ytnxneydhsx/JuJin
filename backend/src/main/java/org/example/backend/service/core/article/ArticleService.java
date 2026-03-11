@@ -17,5 +17,10 @@ public interface ArticleService {
 
     ArticleDetailVO getPublishedArticle(Long viewerUserId, Long articleId);
 
-    Page<ArticleSummaryVO> listPublishedArticles(Long viewerUserId, Long authorUserId, int page, int size);
+    Page<ArticleSummaryVO> listPublishedArticles(Long viewerUserId,
+                                                 Long authorUserId,
+                                                 String sortBy,
+                                                 String sortOrder,
+                                                 int page,
+                                                 int size);
 }

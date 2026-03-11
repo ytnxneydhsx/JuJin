@@ -11,6 +11,8 @@ import org.example.backend.model.entity.ArticleEntity;
 import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleSummaryVO;
 import org.example.backend.service.core.article.ArticleService;
+import org.example.backend.service.core.article.ArticleViewCountService;
+import org.example.backend.service.core.interaction.ArticleLikeCacheService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -31,10 +33,16 @@ public class ArticleServiceImpl implements ArticleService {
     private static final int STATUS_PUBLISHED = 1;
     private static final int STATUS_HIDDEN = 2;
     private static final int RELATION_ACTIVE = 1;
+    private static final String SORT_BY_PUBLISHED_AT = "publishedAt";
+    private static final String SORT_BY_VIEW_COUNT = "viewCount";
+    private static final String SORT_ORDER_ASC = "asc";
+    private static final String SORT_ORDER_DESC = "desc";
 
     private final ArticleMapper articleMapper;
     private final ArticleLikeMapper articleLikeMapper;
     private final ArticleFavoriteMapper articleFavoriteMapper;
+    private final ArticleViewCountService articleViewCountService;
+    private final ArticleLikeCacheService articleLikeCacheService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -90,6 +98,7 @@ public class ArticleServiceImpl implements ArticleService {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
         ArticleDetailVO detail = toDetailVO(article);
+        detail.setLikeCount(articleLikeCacheService.getLikeCount(articleId, detail.getLikeCount()));
         applyInteractionState(detail, userId);
         return detail;
     }
@@ -104,6 +113,7 @@ public class ArticleServiceImpl implements ArticleService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
+        applyLikeCount(records);
         applyInteractionState(records, userId);
         long total = articleMapper.countByUserId(userId);
         return new PageImpl<>(records, pageable, total);
@@ -116,23 +126,40 @@ public class ArticleServiceImpl implements ArticleService {
         if (article == null) {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
+        long latestViewCount = articleViewCountService.increaseAndGet(articleId, article.getViewCount());
         ArticleDetailVO detail = toDetailVO(article);
+        detail.setViewCount(latestViewCount);
+        detail.setLikeCount(articleLikeCacheService.getLikeCount(articleId, detail.getLikeCount()));
         applyInteractionState(detail, viewerUserId);
         return detail;
     }
 
     @Override
-    public Page<ArticleSummaryVO> listPublishedArticles(Long viewerUserId, Long authorUserId, int page, int size) {
+    public Page<ArticleSummaryVO> listPublishedArticles(Long viewerUserId,
+                                                        Long authorUserId,
+                                                        String sortBy,
+                                                        String sortOrder,
+                                                        int page,
+                                                        int size) {
         if (authorUserId != null && authorUserId <= 0) {
             throw new BizException("INVALID_PARAM", "userId must be a positive number");
         }
         Pageable pageable = requirePageable(page, size);
         int offset = Math.toIntExact(pageable.getOffset());
+        String normalizedSortBy = normalizeSortBy(sortBy);
+        String normalizedSortOrder = normalizeSortOrder(sortOrder);
 
-        List<ArticleSummaryVO> records = articleMapper.selectPublishedPage(authorUserId, offset, pageable.getPageSize())
+        List<ArticleSummaryVO> records = articleMapper.selectPublishedPage(
+                        authorUserId,
+                        offset,
+                        pageable.getPageSize(),
+                        normalizedSortBy,
+                        normalizedSortOrder
+                )
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
+        applyLikeCount(records);
         applyInteractionState(records, viewerUserId);
         long total = articleMapper.countPublished(authorUserId);
         return new PageImpl<>(records, pageable, total);
@@ -171,6 +198,7 @@ public class ArticleServiceImpl implements ArticleService {
                 .coverUrl(entity.getCoverUrl())
                 .likeCount(entity.getLikeCount())
                 .favoriteCount(entity.getFavoriteCount())
+                .viewCount(entity.getViewCount())
                 .liked(false)
                 .favorited(false)
                 .publishedAt(entity.getPublishedAt())
@@ -189,6 +217,7 @@ public class ArticleServiceImpl implements ArticleService {
                 .status(entity.getStatus())
                 .likeCount(entity.getLikeCount())
                 .favoriteCount(entity.getFavoriteCount())
+                .viewCount(entity.getViewCount())
                 .liked(false)
                 .favorited(false)
                 .publishedAt(entity.getPublishedAt())
@@ -203,7 +232,8 @@ public class ArticleServiceImpl implements ArticleService {
         }
         Integer likeStatus = articleLikeMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
         Integer favoriteStatus = articleFavoriteMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
-        detail.setLiked(likeStatus != null && likeStatus == RELATION_ACTIVE);
+        boolean mysqlLiked = likeStatus != null && likeStatus == RELATION_ACTIVE;
+        detail.setLiked(articleLikeCacheService.resolveLiked(viewerUserId, detail.getArticleId(), mysqlLiked));
         detail.setFavorited(favoriteStatus != null && favoriteStatus == RELATION_ACTIVE);
     }
 
@@ -224,12 +254,44 @@ public class ArticleServiceImpl implements ArticleService {
                 articleIds
         ));
         records.forEach(item -> {
-            item.setLiked(likedIds.contains(item.getArticleId()));
+            item.setLiked(articleLikeCacheService.resolveLiked(
+                    viewerUserId,
+                    item.getArticleId(),
+                    likedIds.contains(item.getArticleId())
+            ));
             item.setFavorited(favoritedIds.contains(item.getArticleId()));
         });
     }
 
+    private void applyLikeCount(List<ArticleSummaryVO> records) {
+        records.forEach(item -> item.setLikeCount(
+                articleLikeCacheService.getLikeCount(item.getArticleId(), item.getLikeCount())
+        ));
+    }
+
     private void publishArticleSearchSyncEvent(Long articleId) {
         eventPublisher.publishEvent(new ArticleSearchSyncEvent(articleId));
+    }
+
+    private String normalizeSortBy(String sortBy) {
+        if (!StringUtils.hasText(sortBy)) {
+            return SORT_BY_PUBLISHED_AT;
+        }
+        String normalized = sortBy.trim();
+        if (SORT_BY_PUBLISHED_AT.equals(normalized) || SORT_BY_VIEW_COUNT.equals(normalized)) {
+            return normalized;
+        }
+        throw new BizException("INVALID_PARAM", "sortBy must be publishedAt or viewCount");
+    }
+
+    private String normalizeSortOrder(String sortOrder) {
+        if (!StringUtils.hasText(sortOrder)) {
+            return SORT_ORDER_DESC;
+        }
+        String normalized = sortOrder.trim().toLowerCase();
+        if (SORT_ORDER_ASC.equals(normalized) || SORT_ORDER_DESC.equals(normalized)) {
+            return normalized;
+        }
+        throw new BizException("INVALID_PARAM", "sortOrder must be asc or desc");
     }
 }

@@ -1,0 +1,2 @@
+ALTER TABLE article
+ADD COLUMN view_count BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'View count' AFTER favorite_count;

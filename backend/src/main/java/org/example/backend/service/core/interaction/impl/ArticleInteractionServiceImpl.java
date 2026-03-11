@@ -4,11 +4,11 @@ import lombok.RequiredArgsConstructor;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleMapper;
 import org.example.backend.mapper.interaction.ArticleFavoriteMapper;
-import org.example.backend.mapper.interaction.ArticleLikeMapper;
 import org.example.backend.model.entity.ArticleEntity;
 import org.example.backend.model.vo.ArticleFavoriteVO;
 import org.example.backend.model.vo.ArticleLikeVO;
 import org.example.backend.service.core.interaction.ArticleInteractionService;
+import org.example.backend.service.core.interaction.ArticleLikeCacheService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,45 +21,16 @@ public class ArticleInteractionServiceImpl implements ArticleInteractionService 
     private static final int RELATION_CANCELLED = 0;
 
     private final ArticleMapper articleMapper;
-    private final ArticleLikeMapper articleLikeMapper;
     private final ArticleFavoriteMapper articleFavoriteMapper;
+    private final ArticleLikeCacheService articleLikeCacheService;
 
     @Override
     @Transactional
     public ArticleLikeVO likeArticle(Long userId, Long articleId) {
         validatePositive("userId", userId);
         validatePositive("articleId", articleId);
-        ensurePublishedArticleExists(articleId);
-
-        try {
-            articleLikeMapper.insert(userId, articleId, RELATION_ACTIVE);
-            incrementLikeCountOrThrow(articleId);
-            return buildLikeVO(userId, articleId);
-        } catch (DuplicateKeyException ex) {
-            int toCancelled = articleLikeMapper.updateStatusByUserIdAndArticleId(
-                    userId,
-                    articleId,
-                    RELATION_CANCELLED,
-                    RELATION_ACTIVE
-            );
-            if (toCancelled == 1) {
-                decrementLikeCountOrThrow(articleId);
-                return buildLikeVO(userId, articleId);
-            }
-
-            int toActive = articleLikeMapper.updateStatusByUserIdAndArticleId(
-                    userId,
-                    articleId,
-                    RELATION_ACTIVE,
-                    RELATION_CANCELLED
-            );
-            if (toActive == 1) {
-                incrementLikeCountOrThrow(articleId);
-                return buildLikeVO(userId, articleId);
-            }
-
-            throw new BizException("ARTICLE_LIKE_FAILED", "Failed to toggle like status");
-        }
+        ArticleEntity stats = requireInteractionStats(articleId);
+        return articleLikeCacheService.toggleLike(userId, articleId, toNonNullCount(stats.getLikeCount()));
     }
 
     @Override
@@ -67,7 +38,7 @@ public class ArticleInteractionServiceImpl implements ArticleInteractionService 
     public ArticleFavoriteVO favoriteArticle(Long userId, Long articleId) {
         validatePositive("userId", userId);
         validatePositive("articleId", articleId);
-        ensurePublishedArticleExists(articleId);
+        requireInteractionStats(articleId);
 
         try {
             articleFavoriteMapper.insert(userId, articleId, RELATION_ACTIVE);
@@ -106,22 +77,6 @@ public class ArticleInteractionServiceImpl implements ArticleInteractionService 
         }
     }
 
-    private void ensurePublishedArticleExists(Long articleId) {
-        if (articleMapper.countPublishedById(articleId) != 1) {
-            throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
-        }
-    }
-
-    private ArticleLikeVO buildLikeVO(Long userId, Long articleId) {
-        Integer status = articleLikeMapper.selectStatusByUserIdAndArticleId(userId, articleId);
-        ArticleEntity stats = requireInteractionStats(articleId);
-        return ArticleLikeVO.builder()
-                .articleId(articleId)
-                .liked(status != null && status == RELATION_ACTIVE)
-                .likeCount(toNonNullCount(stats.getLikeCount()))
-                .build();
-    }
-
     private ArticleFavoriteVO buildFavoriteVO(Long userId, Long articleId) {
         Integer status = articleFavoriteMapper.selectStatusByUserIdAndArticleId(userId, articleId);
         ArticleEntity stats = requireInteractionStats(articleId);
@@ -142,18 +97,6 @@ public class ArticleInteractionServiceImpl implements ArticleInteractionService 
 
     private long toNonNullCount(Long count) {
         return count == null ? 0L : count;
-    }
-
-    private void incrementLikeCountOrThrow(Long articleId) {
-        if (articleMapper.incrementLikeCountById(articleId) != 1) {
-            throw new BizException("ARTICLE_LIKE_FAILED", "Failed to update like count");
-        }
-    }
-
-    private void decrementLikeCountOrThrow(Long articleId) {
-        if (articleMapper.decrementLikeCountById(articleId) != 1) {
-            throw new BizException("ARTICLE_LIKE_FAILED", "Failed to update like count");
-        }
     }
 
     private void incrementFavoriteCountOrThrow(Long articleId) {

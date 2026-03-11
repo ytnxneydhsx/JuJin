@@ -22,6 +22,7 @@ public class ArticleDetailVO {
     private Integer status;
     private Long likeCount;
     private Long favoriteCount;
+    private Long viewCount;
     private Boolean liked;
     private Boolean favorited;
     private LocalDateTime publishedAt;

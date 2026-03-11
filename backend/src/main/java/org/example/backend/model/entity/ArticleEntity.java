@@ -16,6 +16,7 @@ public class ArticleEntity {
     private Integer status;
     private Long likeCount;
     private Long favoriteCount;
+    private Long viewCount;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
