@@ -6,7 +6,7 @@ import org.example.backend.common.response.Result;
 import org.example.backend.config.LoginUserPrincipal;
 import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleSummaryVO;
-import org.example.backend.service.core.article.ArticleService;
+import org.example.backend.service.core.article.ArticleQueryService;
 import org.springframework.data.domain.Page;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,13 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ArticleController {
 
-    private final ArticleService articleService;
+    private final ArticleQueryService articleQueryService;
 
     @GetMapping("/{articleId}")
     public Result<ArticleDetailVO> getArticle(@PathVariable("articleId") Long articleId,
                                               Authentication authentication) {
         Long viewerUserId = tryGetViewerUserId(authentication);
-        ArticleDetailVO article = articleService.getPublishedArticle(viewerUserId, articleId);
+        ArticleDetailVO article = articleQueryService.getPublishedArticle(viewerUserId, articleId);
         return Result.success(article);
     }
 
@@ -38,7 +38,7 @@ public class ArticleController {
                                                              @RequestParam(value = "size", defaultValue = "20") int size,
                                                              Authentication authentication) {
         Long viewerUserId = tryGetViewerUserId(authentication);
-        Page<ArticleSummaryVO> pageData = articleService.listPublishedArticles(
+        Page<ArticleSummaryVO> pageData = articleQueryService.listPublishedArticles(
                 viewerUserId,
                 userId,
                 sortBy,

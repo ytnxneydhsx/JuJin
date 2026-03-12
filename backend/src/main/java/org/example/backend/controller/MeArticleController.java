@@ -11,6 +11,7 @@ import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleFavoriteVO;
 import org.example.backend.model.vo.ArticleLikeVO;
 import org.example.backend.model.vo.ArticleSummaryVO;
+import org.example.backend.service.core.article.ArticleQueryService;
 import org.example.backend.service.core.article.ArticleService;
 import org.example.backend.service.core.interaction.ArticleInteractionService;
 import org.springframework.data.domain.Page;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeArticleController {
 
     private final ArticleService articleService;
+    private final ArticleQueryService articleQueryService;
     private final ArticleInteractionService articleInteractionService;
 
     @PutMapping("/{articleId}")
@@ -70,7 +72,7 @@ public class MeArticleController {
     public Result<ArticleDetailVO> getMyArticle(@PathVariable("articleId") Long articleId,
                                                 Authentication authentication) {
         Long userId = requireLoginUserId(authentication);
-        ArticleDetailVO article = articleService.getMyArticle(userId, articleId);
+        ArticleDetailVO article = articleQueryService.getMyArticle(userId, articleId);
         return Result.success(article);
     }
 
@@ -79,7 +81,7 @@ public class MeArticleController {
                                                                @RequestParam(value = "size", defaultValue = "20") int size,
                                                                Authentication authentication) {
         Long userId = requireLoginUserId(authentication);
-        Page<ArticleSummaryVO> pageData = articleService.listMyArticles(userId, page, size);
+        Page<ArticleSummaryVO> pageData = articleQueryService.listMyArticles(userId, page, size);
         return Result.success(PageResult.from(pageData));
     }
 
