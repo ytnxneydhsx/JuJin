@@ -134,7 +134,6 @@ public class DraftServiceImpl implements DraftService {
             entity.setTitle(title);
             entity.setSummary(trimToNull(draft.getSummary()));
             entity.setCoverUrl(trimToNull(draft.getCoverUrl()));
-            entity.setContent(content);
             entity.setStatus(ARTICLE_STATUS_PUBLISHED);
             int inserted = articleMapper.insert(entity);
             if (inserted != 1 || entity.getId() == null) {

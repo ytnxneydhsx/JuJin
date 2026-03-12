@@ -14,8 +14,8 @@ import java.util.List;
 public interface ArticleMapper {
 
     @Insert("""
-            INSERT INTO article(user_id, title, summary, cover_url, content, status, published_at)
-            VALUES(#{userId}, #{title}, #{summary}, #{coverUrl}, #{content}, #{status}, NOW())
+            INSERT INTO article(user_id, title, summary, cover_url, status, published_at)
+            VALUES(#{userId}, #{title}, #{summary}, #{coverUrl}, #{status}, NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ArticleEntity entity);
@@ -55,11 +55,11 @@ public interface ArticleMapper {
               a.title AS title,
               a.summary AS summary,
               a.cover_url AS coverUrl,
-              COALESCE(c.content, a.content) AS content,
+              c.content AS content,
               a.status AS status,
-              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
-              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
-              COALESCE(s.view_count, a.view_count, 0) AS viewCount,
+              COALESCE(s.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, 0) AS viewCount,
               a.published_at AS publishedAt,
               a.created_at AS createdAt,
               a.updated_at AS updatedAt
@@ -80,11 +80,11 @@ public interface ArticleMapper {
               a.title AS title,
               a.summary AS summary,
               a.cover_url AS coverUrl,
-              COALESCE(c.content, a.content) AS content,
+              c.content AS content,
               a.status AS status,
-              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
-              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
-              COALESCE(s.view_count, a.view_count, 0) AS viewCount,
+              COALESCE(s.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, 0) AS viewCount,
               a.published_at AS publishedAt,
               a.created_at AS createdAt,
               a.updated_at AS updatedAt
@@ -104,9 +104,9 @@ public interface ArticleMapper {
               a.summary AS summary,
               a.cover_url AS coverUrl,
               a.status AS status,
-              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
-              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
-              COALESCE(s.view_count, a.view_count, 0) AS viewCount,
+              COALESCE(s.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, 0) AS viewCount,
               a.published_at AS publishedAt,
               a.created_at AS createdAt,
               a.updated_at AS updatedAt
@@ -138,9 +138,9 @@ public interface ArticleMapper {
             "  a.summary AS summary,",
             "  a.cover_url AS coverUrl,",
             "  a.status AS status,",
-            "  COALESCE(s.like_count, a.like_count, 0) AS likeCount,",
-            "  COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,",
-            "  COALESCE(s.view_count, a.view_count, 0) AS viewCount,",
+            "  COALESCE(s.like_count, 0) AS likeCount,",
+            "  COALESCE(s.favorite_count, 0) AS favoriteCount,",
+            "  COALESCE(s.view_count, 0) AS viewCount,",
             "  a.published_at AS publishedAt,",
             "  a.created_at AS createdAt,",
             "  a.updated_at AS updatedAt",
@@ -150,7 +150,7 @@ public interface ArticleMapper {
             "  AND (#{authorUserId} IS NULL OR a.user_id = #{authorUserId})",
             "ORDER BY",
             "  <choose>",
-            "    <when test='sortBy == \"viewCount\"'>COALESCE(s.view_count, a.view_count, 0)</when>",
+            "    <when test='sortBy == \"viewCount\"'>COALESCE(s.view_count, 0)</when>",
             "    <otherwise>a.published_at</otherwise>",
             "  </choose>",
             "  <choose>",
@@ -190,9 +190,9 @@ public interface ArticleMapper {
     @Select("""
             SELECT
               a.id AS id,
-              COALESCE(s.like_count, a.like_count, 0) AS likeCount,
-              COALESCE(s.favorite_count, a.favorite_count, 0) AS favoriteCount,
-              COALESCE(s.view_count, a.view_count, 0) AS viewCount
+              COALESCE(s.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, 0) AS viewCount
             FROM article a
             LEFT JOIN article_stats s ON s.article_id = a.id
             WHERE a.id = #{articleId}
@@ -201,20 +201,18 @@ public interface ArticleMapper {
     ArticleEntity selectInteractionStatsById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.view_count = a.view_count + 1,
-                s.view_count = s.view_count + 1
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.view_count = s.view_count + 1
             WHERE a.id = #{articleId}
               AND a.status = 1
             """)
     int incrementViewCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.view_count = #{viewCount},
-                s.view_count = #{viewCount}
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.view_count = #{viewCount}
             WHERE a.id = #{articleId}
               AND a.status = 1
             """)
@@ -222,20 +220,18 @@ public interface ArticleMapper {
                             @Param("viewCount") Long viewCount);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.like_count = a.like_count + 1,
-                s.like_count = s.like_count + 1
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.like_count = s.like_count + 1
             WHERE a.id = #{articleId}
               AND a.status = 1
             """)
     int incrementLikeCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.like_count = #{likeCount},
-                s.like_count = #{likeCount}
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.like_count = #{likeCount}
             WHERE a.id = #{articleId}
               AND a.status <> 3
             """)
@@ -243,35 +239,30 @@ public interface ArticleMapper {
                             @Param("likeCount") Long likeCount);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.like_count = a.like_count - 1,
-                s.like_count = s.like_count - 1
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.like_count = s.like_count - 1
             WHERE a.id = #{articleId}
               AND a.status = 1
-              AND a.like_count > 0
               AND s.like_count > 0
             """)
     int decrementLikeCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.favorite_count = a.favorite_count + 1,
-                s.favorite_count = s.favorite_count + 1
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.favorite_count = s.favorite_count + 1
             WHERE a.id = #{articleId}
               AND a.status = 1
             """)
     int incrementFavoriteCountById(@Param("articleId") Long articleId);
 
     @Update("""
-            UPDATE article a
-            JOIN article_stats s ON s.article_id = a.id
-            SET a.favorite_count = a.favorite_count - 1,
-                s.favorite_count = s.favorite_count - 1
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.favorite_count = s.favorite_count - 1
             WHERE a.id = #{articleId}
               AND a.status = 1
-              AND a.favorite_count > 0
               AND s.favorite_count > 0
             """)
     int decrementFavoriteCountById(@Param("articleId") Long articleId);
