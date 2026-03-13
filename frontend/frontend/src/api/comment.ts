@@ -23,9 +23,9 @@ export async function listRootComments(articleId: number, query: ListCommentQuer
   return data.data
 }
 
-export async function listThreadComments(articleId: number, rootId: number, query: ListCommentQuery) {
+export async function listChildComments(articleId: number, commentId: number, query: ListCommentQuery) {
   const { data } = await http.get<ApiResult<PageResult<ArticleCommentVO>>>(
-    `/api/article/${articleId}/comment/root/${rootId}`,
+    `/api/article/${articleId}/comment/${commentId}/children`,
     {
       params: query,
     },
@@ -46,4 +46,3 @@ export async function toggleCommentLike(commentId: number) {
   const { data } = await http.post<ApiResult<CommentLikeToggleVO>>(`/api/me/comment/${commentId}/like`)
   return data.data
 }
-

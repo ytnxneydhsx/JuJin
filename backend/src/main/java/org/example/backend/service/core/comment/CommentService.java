@@ -12,5 +12,5 @@ public interface CommentService {
 
     Page<ArticleCommentVO> listRootComments(Long viewerUserId, Long articleId, int page, int size);
 
-    Page<ArticleCommentVO> listThreadComments(Long viewerUserId, Long articleId, Long rootId, int page, int size);
+    Page<ArticleCommentVO> listChildComments(Long viewerUserId, Long articleId, Long parentId, int page, int size);
 }

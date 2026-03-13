@@ -52,6 +52,8 @@ export interface ArticleCommentVO {
   replyToUserId: number | null
   content: string
   liked: boolean
+  childCount: number
+  children: ArticleCommentVO[]
   createdAt: string
   updatedAt: string
 }

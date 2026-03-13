@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Builder
@@ -21,6 +23,9 @@ public class ArticleCommentVO {
     private Long replyToUserId;
     private String content;
     private Boolean liked;
+    private Long childCount;
+    @Builder.Default
+    private List<ArticleCommentVO> children = new ArrayList<>();
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

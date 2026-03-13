@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import CommentTreeNode from '@/components/comment/CommentTreeNode.vue'
 import { getArticle, toggleFavoriteArticle, toggleLikeArticle } from '@/api/article'
 import {
   createComment,
   deleteComment,
+  listChildComments,
   listRootComments,
-  listThreadComments,
   toggleCommentLike,
 } from '@/api/comment'
 import { useAuthStore } from '@/stores/auth'
@@ -14,17 +15,24 @@ import type { ArticleCommentVO, ArticleDetailVO } from '@/types/models'
 import { formatDateTime } from '@/utils/date'
 import { renderMarkdownToSafeHtml } from '@/utils/markdown'
 
-interface ThreadState {
+interface CommentChildState {
   open: boolean
   loading: boolean
+  loaded: boolean
   errorText: string
   page: number
   size: number
   total: number
-  records: ArticleCommentVO[]
-  replyContent: string
-  replyParentId: number | null
+  hasNext: boolean
 }
+
+interface RootReplyState {
+  content: string
+  parentId: number | null
+  errorText: string
+}
+
+const COMMENT_CHILD_PAGE_SIZE = 5
 
 const route = useRoute()
 const router = useRouter()
@@ -41,7 +49,8 @@ const rootComments = ref<ArticleCommentVO[]>([])
 const rootPage = ref(0)
 const rootSize = ref(10)
 const rootTotal = ref(0)
-const threadMap = reactive<Record<number, ThreadState>>({})
+const commentStateMap = reactive<Record<number, CommentChildState>>({})
+const rootReplyMap = reactive<Record<number, RootReplyState>>({})
 
 const articleId = computed(() => {
   const parsed = Number(route.params.articleId)
@@ -56,20 +65,140 @@ const renderHtml = computed(() => {
 })
 
 function ensureThreadState(rootId: number) {
-  if (!threadMap[rootId]) {
-    threadMap[rootId] = {
+  if (!commentStateMap[rootId]) {
+    commentStateMap[rootId] = {
       open: false,
       loading: false,
+      loaded: false,
       errorText: '',
-      page: 0,
-      size: 20,
+      page: -1,
+      size: COMMENT_CHILD_PAGE_SIZE,
       total: 0,
-      records: [],
-      replyContent: '',
-      replyParentId: null,
+      hasNext: false,
     }
   }
-  return threadMap[rootId]
+  return commentStateMap[rootId]
+}
+
+function ensureRootReplyState(rootId: number) {
+  if (!rootReplyMap[rootId]) {
+    rootReplyMap[rootId] = {
+      content: '',
+      parentId: null,
+      errorText: '',
+    }
+  }
+  return rootReplyMap[rootId]
+}
+
+function normalizeCommentTree(records: ArticleCommentVO[]): ArticleCommentVO[] {
+  return records.map((item) => ({
+    ...item,
+    childCount: item.childCount ?? 0,
+    children: normalizeCommentTree(item.children ?? []),
+  }))
+}
+
+function resetCommentStateMaps() {
+  Object.keys(commentStateMap).forEach((key) => {
+    delete commentStateMap[Number(key)]
+  })
+  Object.keys(rootReplyMap).forEach((key) => {
+    delete rootReplyMap[Number(key)]
+  })
+}
+
+function seedLoadedChildStates(records: ArticleCommentVO[]) {
+  records.forEach((item) => {
+    const state = ensureThreadState(item.commentId)
+    state.open = false
+    state.loading = false
+    state.loaded = false
+    state.errorText = ''
+    state.page = -1
+    state.size = COMMENT_CHILD_PAGE_SIZE
+    state.total = item.childCount
+    state.hasNext = item.childCount > 0
+    if (item.children.length > 0) {
+      seedLoadedChildStates(item.children)
+    }
+  })
+}
+
+function seedRootStates(records: ArticleCommentVO[]) {
+  resetCommentStateMaps()
+  records.forEach((root) => {
+    const state = ensureThreadState(root.commentId)
+    state.open = root.children.length > 0
+    state.loading = false
+    state.loaded = root.children.length > 0 || root.childCount === 0
+    state.errorText = ''
+    state.page = root.children.length > 0 ? 0 : -1
+    state.size = COMMENT_CHILD_PAGE_SIZE
+    state.total = root.childCount
+    state.hasNext = root.children.length < root.childCount
+    ensureRootReplyState(root.commentId)
+    seedLoadedChildStates(root.children)
+  })
+}
+
+function findCommentById(records: ArticleCommentVO[], commentId: number): ArticleCommentVO | null {
+  for (const item of records) {
+    if (item.commentId === commentId) {
+      return item
+    }
+    const found = findCommentById(item.children, commentId)
+    if (found) {
+      return found
+    }
+  }
+  return null
+}
+
+function updateCommentById(
+  records: ArticleCommentVO[],
+  commentId: number,
+  updater: (comment: ArticleCommentVO) => ArticleCommentVO,
+): ArticleCommentVO[] {
+  let changed = false
+  const nextRecords = records.map((item) => {
+    let nextItem = item
+    if (item.commentId === commentId) {
+      nextItem = updater(item)
+      changed = true
+    }
+    if (nextItem.children.length > 0) {
+      const nextChildren = updateCommentById(nextItem.children, commentId, updater)
+      if (nextChildren !== nextItem.children) {
+        nextItem = { ...nextItem, children: nextChildren }
+        changed = true
+      }
+    }
+    return nextItem
+  })
+  return changed ? nextRecords : records
+}
+
+function appendUniqueComments(existing: ArticleCommentVO[], incoming: ArticleCommentVO[]) {
+  const merged = [...existing]
+  const existingIds = new Set(existing.map((item) => item.commentId))
+  incoming.forEach((item) => {
+    if (!existingIds.has(item.commentId)) {
+      merged.push(item)
+    }
+  })
+  return merged
+}
+
+function shouldShowReplyComposer(rootId: number) {
+  return ensureRootReplyState(rootId).parentId !== null
+}
+
+function clearReplyComposer(rootId: number) {
+  const state = ensureRootReplyState(rootId)
+  state.content = ''
+  state.parentId = null
+  state.errorText = ''
 }
 
 function requireLoginOrRedirect() {
@@ -113,11 +242,13 @@ async function loadRootCommentPage() {
       page: rootPage.value,
       size: rootSize.value,
     })
-    rootComments.value = data.records
+    rootComments.value = normalizeCommentTree(data.records)
     rootTotal.value = data.total
+    seedRootStates(rootComments.value)
   } catch (error) {
     rootComments.value = []
     rootTotal.value = 0
+    resetCommentStateMaps()
     commentErrorText.value = error instanceof Error ? error.message : 'Failed to load comments'
   } finally {
     loadingRootComments.value = false
@@ -185,53 +316,85 @@ async function submitRootComment() {
   }
 }
 
-async function loadThread(rootId: number) {
+async function loadChildPage(comment: ArticleCommentVO, append = false) {
   if (articleId.value === null) {
     return
   }
-  const state = ensureThreadState(rootId)
+  const state = ensureThreadState(comment.commentId)
+  if (state.loading) {
+    return
+  }
+  const nextPage = append && state.page >= 0 ? state.page + 1 : 0
   state.loading = true
   state.errorText = ''
   try {
-    const data = await listThreadComments(articleId.value, rootId, {
-      page: state.page,
+    const data = await listChildComments(articleId.value, comment.commentId, {
+      page: nextPage,
       size: state.size,
     })
-    state.records = data.records.filter((item) => item.commentId !== rootId)
+    const loadedChildren = normalizeCommentTree(data.records)
+    seedLoadedChildStates(loadedChildren)
+    const currentComment = findCommentById(rootComments.value, comment.commentId)
+    const nextChildren = append
+      ? appendUniqueComments(currentComment?.children ?? [], loadedChildren)
+      : loadedChildren
+    rootComments.value = updateCommentById(rootComments.value, comment.commentId, (item) => ({
+      ...item,
+      childCount: data.total,
+      children: nextChildren,
+    }))
+    state.open = true
+    state.loaded = true
+    state.page = data.page
+    state.size = data.size
     state.total = data.total
+    state.hasNext = data.hasNext
   } catch (error) {
-    state.records = []
-    state.total = 0
-    state.errorText = error instanceof Error ? error.message : 'Failed to load thread'
+    state.errorText = error instanceof Error ? error.message : 'Failed to load replies'
   } finally {
     state.loading = false
   }
 }
 
-async function toggleThread(rootId: number) {
-  const state = ensureThreadState(rootId)
-  state.open = !state.open
-  if (state.open && state.records.length === 0) {
-    await loadThread(rootId)
+async function toggleChildren(comment: ArticleCommentVO) {
+  const state = ensureThreadState(comment.commentId)
+  if (state.open) {
+    state.open = false
+    return
   }
+  if (!state.loaded && comment.childCount > 0) {
+    await loadChildPage(comment, false)
+    return
+  }
+  state.open = true
 }
 
-function prepareReply(rootId: number, parentId: number) {
-  const state = ensureThreadState(rootId)
-  state.replyParentId = parentId
+async function loadMoreChildren(comment: ArticleCommentVO) {
+  const state = ensureThreadState(comment.commentId)
+  if (!state.hasNext || state.loading) {
+    return
+  }
+  await loadChildPage(comment, true)
 }
 
-async function submitReply(rootId: number) {
+function prepareReply(payload: { rootId: number; parentId: number }) {
+  const replyState = ensureRootReplyState(payload.rootId)
+  replyState.parentId = payload.parentId
+  replyState.errorText = ''
+  ensureThreadState(payload.rootId).open = true
+}
+
+async function submitReply(root: ArticleCommentVO) {
   if (!requireLoginOrRedirect() || articleId.value === null) {
     return
   }
-  const state = ensureThreadState(rootId)
-  const content = state.replyContent.trim()
+  const state = ensureRootReplyState(root.commentId)
+  const content = state.content.trim()
   if (!content) {
     state.errorText = 'Reply cannot be empty'
     return
   }
-  if (state.replyParentId === null) {
+  if (state.parentId === null) {
     state.errorText = 'Reply target is required'
     return
   }
@@ -239,30 +402,32 @@ async function submitReply(rootId: number) {
   try {
     await createComment({
       articleId: articleId.value,
-      parentId: state.replyParentId,
+      parentId: state.parentId,
       content,
     })
-    state.replyContent = ''
-    await Promise.all([loadRootCommentPage(), loadThread(rootId)])
+    const replyParentId = state.parentId
+    state.content = ''
+    state.parentId = null
+    rootComments.value = updateCommentById(rootComments.value, replyParentId, (item) => ({
+      ...item,
+      childCount: item.childCount + 1,
+    }))
+    const parentComment = findCommentById(rootComments.value, replyParentId)
+    if (parentComment) {
+      await loadChildPage(parentComment, false)
+    } else {
+      await loadRootCommentPage()
+    }
   } catch (error) {
     state.errorText = error instanceof Error ? error.message : 'Failed to create reply'
   }
 }
 
 function patchCommentLiked(commentId: number, liked: boolean) {
-  rootComments.value = rootComments.value.map((item) =>
-    item.commentId === commentId ? { ...item, liked } : item,
-  )
-  Object.keys(threadMap).forEach((key) => {
-    const rootId = Number(key)
-    const state = threadMap[rootId]
-    if (!state) {
-      return
-    }
-    state.records = state.records.map((item) =>
-      item.commentId === commentId ? { ...item, liked } : item,
-    )
-  })
+  rootComments.value = updateCommentById(rootComments.value, commentId, (item) => ({
+    ...item,
+    liked,
+  }))
 }
 
 async function handleToggleCommentLike(commentId: number) {
@@ -277,21 +442,30 @@ async function handleToggleCommentLike(commentId: number) {
   }
 }
 
-async function handleDeleteComment(commentId: number, rootId: number) {
+async function handleDeleteComment(comment: ArticleCommentVO) {
   if (!requireLoginOrRedirect()) {
     return
   }
-  const confirmed = window.confirm(`Delete comment #${commentId}?`)
+  const confirmed = window.confirm(`Delete comment #${comment.commentId}?`)
   if (!confirmed) {
     return
   }
   try {
-    await deleteComment(commentId)
-    if (commentId === rootId) {
+    await deleteComment(comment.commentId)
+    if (comment.parentId === null) {
       await loadRootCommentPage()
       return
     }
-    await Promise.all([loadRootCommentPage(), loadThread(rootId)])
+    rootComments.value = updateCommentById(rootComments.value, comment.parentId, (item) => ({
+      ...item,
+      childCount: Math.max(0, item.childCount - 1),
+    }))
+    const parentComment = findCommentById(rootComments.value, comment.parentId)
+    if (parentComment) {
+      await loadChildPage(parentComment, false)
+      return
+    }
+    await loadRootCommentPage()
   } catch (error) {
     commentErrorText.value = error instanceof Error ? error.message : 'Failed to delete comment'
   }
@@ -301,9 +475,7 @@ watch(
   () => route.params.articleId,
   async () => {
     rootPage.value = 0
-    Object.keys(threadMap).forEach((key) => {
-      delete threadMap[Number(key)]
-    })
+    resetCommentStateMaps()
     await refreshAll()
   },
   {
@@ -365,78 +537,41 @@ watch(rootPage, loadRootCommentPage)
       <div v-if="loadingRootComments" class="panel">Loading comments...</div>
       <div v-else-if="rootComments.length === 0" class="panel">No comments yet.</div>
       <div v-else class="comment-list">
-        <article v-for="root in rootComments" :key="root.commentId" class="comment-card">
-          <header>
-            <span>#{{ root.commentId }} by User {{ root.userId }}</span>
-            <span>{{ formatDateTime(root.createdAt) }}</span>
-          </header>
-          <p>{{ root.content }}</p>
-          <div class="comment-actions">
-            <button :class="{ active: root.liked }" @click="handleToggleCommentLike(root.commentId)">
-              {{ root.liked ? 'Unlike' : 'Like' }}
-            </button>
-            <button @click="prepareReply(root.commentId, root.commentId)">Reply</button>
-            <button @click="toggleThread(root.commentId)">
-              {{ ensureThreadState(root.commentId).open ? 'Hide replies' : 'Show replies' }}
-            </button>
-            <button
-              v-if="authStore.state.userId === root.userId"
-              class="danger"
-              @click="handleDeleteComment(root.commentId, root.commentId)"
-            >
-              Delete
-            </button>
-          </div>
+        <article v-for="root in rootComments" :key="root.commentId" class="comment-thread">
+          <CommentTreeNode
+            :comment="root"
+            :auth-user-id="authStore.state.userId"
+            :comment-states="commentStateMap"
+            @toggle-like="handleToggleCommentLike"
+            @prepare-reply="prepareReply"
+            @delete-comment="handleDeleteComment"
+            @toggle-children="toggleChildren"
+            @load-more-children="loadMoreChildren"
+          />
 
-          <div v-if="ensureThreadState(root.commentId).open" class="thread-area">
-            <p v-if="ensureThreadState(root.commentId).errorText" class="error-text">
-              {{ ensureThreadState(root.commentId).errorText }}
+          <form
+            v-if="shouldShowReplyComposer(root.commentId)"
+            class="reply-form root-reply-form"
+            @submit.prevent="submitReply(root)"
+          >
+            <p v-if="ensureRootReplyState(root.commentId).errorText" class="error-text">
+              {{ ensureRootReplyState(root.commentId).errorText }}
             </p>
-            <div v-if="ensureThreadState(root.commentId).loading">Loading replies...</div>
-            <div v-else-if="ensureThreadState(root.commentId).records.length === 0" class="subtle">
-              No replies yet.
-            </div>
-            <div v-else class="thread-list">
-              <article
-                v-for="reply in ensureThreadState(root.commentId).records"
-                :key="reply.commentId"
-                class="reply-card"
-              >
-                <header>
-                  <span>#{{ reply.commentId }} by User {{ reply.userId }}</span>
-                  <span>{{ formatDateTime(reply.createdAt) }}</span>
-                </header>
-                <p>{{ reply.content }}</p>
-                <div class="comment-actions">
-                  <button :class="{ active: reply.liked }" @click="handleToggleCommentLike(reply.commentId)">
-                    {{ reply.liked ? 'Unlike' : 'Like' }}
-                  </button>
-                  <button @click="prepareReply(root.commentId, reply.commentId)">Reply</button>
-                  <button
-                    v-if="authStore.state.userId === reply.userId"
-                    class="danger"
-                    @click="handleDeleteComment(reply.commentId, root.commentId)"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            </div>
-
-            <form class="reply-form" @submit.prevent="submitReply(root.commentId)">
-              <textarea
-                v-model="ensureThreadState(root.commentId).replyContent"
-                rows="2"
-                maxlength="3000"
-                :placeholder="
-                  ensureThreadState(root.commentId).replyParentId
-                    ? `Reply to #${ensureThreadState(root.commentId).replyParentId}`
-                    : 'Select a comment first'
-                "
-              />
+            <textarea
+              v-model="ensureRootReplyState(root.commentId).content"
+              rows="2"
+              maxlength="3000"
+              :placeholder="
+                ensureRootReplyState(root.commentId).parentId
+                  ? `Reply to #${ensureRootReplyState(root.commentId).parentId}`
+                  : 'Select a comment first'
+              "
+            />
+            <div class="reply-form-actions">
               <button type="submit">Reply</button>
-            </form>
-          </div>
+              <button type="button" class="secondary" @click="clearReplyComposer(root.commentId)">Cancel</button>
+            </div>
+          </form>
         </article>
       </div>
 
@@ -578,53 +713,7 @@ watch(rootPage, loadRootCommentPage)
   gap: 10px;
 }
 
-.comment-card {
-  border: 1px solid var(--line-soft);
-  border-radius: 10px;
-  padding: 10px 12px;
-  display: grid;
-  gap: 8px;
-}
-
-.comment-card > header,
-.reply-card > header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--ink-muted);
-  font-size: 0.84rem;
-}
-
-.comment-card p,
-.reply-card p {
-  margin: 0;
-  line-height: 1.6;
-}
-
-.comment-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.thread-area {
-  border-top: 1px dashed var(--line-soft);
-  padding-top: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.thread-list {
-  display: grid;
-  gap: 8px;
-}
-
-.reply-card {
-  border: 1px solid rgba(20, 88, 166, 0.2);
-  border-radius: 10px;
-  background: rgba(20, 88, 166, 0.04);
-  padding: 8px 10px;
+.comment-thread {
   display: grid;
   gap: 8px;
 }
@@ -632,6 +721,19 @@ watch(rootPage, loadRootCommentPage)
 .subtle {
   color: var(--ink-muted);
   font-size: 0.9rem;
+}
+
+.root-reply-form {
+  margin-left: 16px;
+}
+
+.reply-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.reply-form-actions .secondary {
+  border-color: var(--line-soft);
 }
 
 .panel {
