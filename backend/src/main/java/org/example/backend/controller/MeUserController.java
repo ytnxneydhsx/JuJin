@@ -3,10 +3,10 @@ package org.example.backend.controller;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.auth.AuthUtils;
 import org.example.backend.common.response.Result;
 import org.example.backend.config.LoginUserPrincipal;
 import org.example.backend.config.SessionKeys;
-import org.example.backend.exception.BizException;
 import org.example.backend.model.dto.user.LoginDTO;
 import org.example.backend.model.dto.user.RegisterDTO;
 import org.example.backend.model.dto.user.UpdateAvatarDTO;
@@ -53,21 +53,21 @@ public class MeUserController {
 
     @PutMapping("/profile/sign")
     public Result<Void> updateSign(@Valid @RequestBody UpdateSignDTO dto, Authentication authentication) {
-        LoginUserPrincipal principal = requireLoginPrincipal(authentication);
+        LoginUserPrincipal principal = AuthUtils.requireLoginPrincipal(authentication);
         userService.updateSign(principal.getUserId(), principal.getAccount(), dto.getSign().trim());
         return Result.success("Sign updated successfully", null);
     }
 
     @PutMapping("/profile/avatar")
     public Result<Void> updateAvatar(@Valid @RequestBody UpdateAvatarDTO dto, Authentication authentication) {
-        LoginUserPrincipal principal = requireLoginPrincipal(authentication);
+        LoginUserPrincipal principal = AuthUtils.requireLoginPrincipal(authentication);
         userService.updateAvatar(principal.getUserId(), principal.getAccount(), dto.getAvatarUrl().trim());
         return Result.success("Avatar updated successfully", null);
     }
 
     @PutMapping("/profile/name")
     public Result<Void> updateName(@Valid @RequestBody UpdateNameDTO dto, Authentication authentication) {
-        LoginUserPrincipal principal = requireLoginPrincipal(authentication);
+        LoginUserPrincipal principal = AuthUtils.requireLoginPrincipal(authentication);
         userService.updateName(principal.getUserId(), principal.getAccount(), dto.getName().trim());
         return Result.success("Name updated successfully", null);
     }
@@ -75,18 +75,8 @@ public class MeUserController {
     @PutMapping("/password")
     public Result<Void> updatePassword(@Valid @RequestBody UpdatePasswordDTO dto,
                                        Authentication authentication) {
-        Long userId = requireLoginPrincipal(authentication).getUserId();
+        Long userId = AuthUtils.requireLoginPrincipal(authentication).getUserId();
         userService.updatePassword(userId, dto);
         return Result.success("Password updated successfully", null);
-    }
-
-    private LoginUserPrincipal requireLoginPrincipal(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof LoginUserPrincipal principal)) {
-            throw new BizException("UNAUTHORIZED", "Please login first");
-        }
-        if (principal.getUserId() == null) {
-            throw new BizException("UNAUTHORIZED", "Please login first");
-        }
-        return principal;
     }
 }

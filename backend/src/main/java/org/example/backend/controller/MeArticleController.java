@@ -2,10 +2,9 @@ package org.example.backend.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.auth.AuthUtils;
 import org.example.backend.common.response.PageResult;
 import org.example.backend.common.response.Result;
-import org.example.backend.config.LoginUserPrincipal;
-import org.example.backend.exception.BizException;
 import org.example.backend.model.dto.article.UpdateArticleDTO;
 import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleFavoriteVO;
@@ -39,7 +38,7 @@ public class MeArticleController {
     public Result<Void> updateArticle(@PathVariable("articleId") Long articleId,
                                       @Valid @RequestBody UpdateArticleDTO dto,
                                       Authentication authentication) {
-        Long userId = requireLoginUserId(authentication);
+        Long userId = AuthUtils.requireLoginUserId(authentication);
         articleService.updateArticle(userId, articleId, dto);
         return Result.success("Article updated successfully", null);
     }
@@ -47,7 +46,7 @@ public class MeArticleController {
     @DeleteMapping("/{articleId}")
     public Result<Void> deleteArticle(@PathVariable("articleId") Long articleId,
                                       Authentication authentication) {
-        Long userId = requireLoginUserId(authentication);
+        Long userId = AuthUtils.requireLoginUserId(authentication);
         articleService.deleteArticle(userId, articleId);
         return Result.success("Article deleted successfully", null);
     }
@@ -55,7 +54,7 @@ public class MeArticleController {
     @PostMapping("/{articleId}/like")
     public Result<ArticleLikeVO> likeArticle(@PathVariable("articleId") Long articleId,
                                              Authentication authentication) {
-        Long userId = requireLoginUserId(authentication);
+        Long userId = AuthUtils.requireLoginUserId(authentication);
         ArticleLikeVO result = articleInteractionService.likeArticle(userId, articleId);
         return Result.success("Article like toggled successfully", result);
     }
@@ -63,7 +62,7 @@ public class MeArticleController {
     @PostMapping("/{articleId}/favorite")
     public Result<ArticleFavoriteVO> favoriteArticle(@PathVariable("articleId") Long articleId,
                                                      Authentication authentication) {
-        Long userId = requireLoginUserId(authentication);
+        Long userId = AuthUtils.requireLoginUserId(authentication);
         ArticleFavoriteVO result = articleInteractionService.favoriteArticle(userId, articleId);
         return Result.success("Article favorite toggled successfully", result);
     }
@@ -71,7 +70,7 @@ public class MeArticleController {
     @GetMapping("/{articleId}")
     public Result<ArticleDetailVO> getMyArticle(@PathVariable("articleId") Long articleId,
                                                 Authentication authentication) {
-        Long userId = requireLoginUserId(authentication);
+        Long userId = AuthUtils.requireLoginUserId(authentication);
         ArticleDetailVO article = articleQueryService.getMyArticle(userId, articleId);
         return Result.success(article);
     }
@@ -80,18 +79,8 @@ public class MeArticleController {
     public Result<PageResult<ArticleSummaryVO>> listMyArticles(@RequestParam(value = "page", defaultValue = "0") int page,
                                                                @RequestParam(value = "size", defaultValue = "20") int size,
                                                                Authentication authentication) {
-        Long userId = requireLoginUserId(authentication);
+        Long userId = AuthUtils.requireLoginUserId(authentication);
         Page<ArticleSummaryVO> pageData = articleQueryService.listMyArticles(userId, page, size);
         return Result.success(PageResult.from(pageData));
-    }
-
-    private Long requireLoginUserId(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof LoginUserPrincipal principal)) {
-            throw new BizException("UNAUTHORIZED", "Please login first");
-        }
-        if (principal.getUserId() == null) {
-            throw new BizException("UNAUTHORIZED", "Please login first");
-        }
-        return principal.getUserId();
     }
 }

@@ -1,6 +1,7 @@
 package org.example.backend.service.core.draft.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.page.PageUtils;
 import org.example.backend.event.article.ArticleSearchSyncEvent;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleDraftMapper;
@@ -12,8 +13,6 @@ import org.example.backend.model.vo.ArticleDraftVO;
 import org.example.backend.service.core.draft.DraftService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,8 +87,8 @@ public class DraftServiceImpl implements DraftService {
     @Override
     public Page<ArticleDraftVO> listDrafts(Long userId, int page, int size) {
         validateUserId(userId);
-        Pageable pageable = requirePageable(page, size);
-        int offset = Math.toIntExact(pageable.getOffset());
+        Pageable pageable = PageUtils.pageable(page, size);
+        int offset = PageUtils.offset(pageable);
 
         List<ArticleDraftVO> records = articleDraftMapper.selectPageByUserId(
                         userId,
@@ -101,7 +100,7 @@ public class DraftServiceImpl implements DraftService {
                 .map(this::toDraftVO)
                 .toList();
         long total = articleDraftMapper.countByUserId(userId, DRAFT_STATUS_DRAFT);
-        return new PageImpl<>(records, pageable, total);
+        return PageUtils.page(records, pageable, total);
     }
 
     @Override
@@ -196,13 +195,6 @@ public class DraftServiceImpl implements DraftService {
         if (value == null || value <= 0) {
             throw new BizException("INVALID_PARAM", fieldName + " must be a positive number");
         }
-    }
-
-    private Pageable requirePageable(int page, int size) {
-        if (page < 0 || size <= 0) {
-            throw new BizException("INVALID_PARAM", "Invalid pagination parameters: page must be >= 0 and size must be > 0");
-        }
-        return PageRequest.of(page, size);
     }
 
     private String trimToNull(String value) {

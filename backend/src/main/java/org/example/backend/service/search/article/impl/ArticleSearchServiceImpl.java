@@ -1,6 +1,7 @@
 package org.example.backend.service.search.article.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.page.PageUtils;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.search.ArticleSearchMapper;
 import org.example.backend.model.dto.ArticleSearchSource;
@@ -9,7 +10,6 @@ import org.example.backend.model.vo.ArticleSearchVO;
 import org.example.backend.repository.ArticleSearchRepository;
 import org.example.backend.service.search.article.ArticleSearchService;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -30,11 +30,7 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
         if (!StringUtils.hasText(keyword) && userId == null) {
             throw new BizException("INVALID_PARAM", "Missing required query parameter: provide q or userId");
         }
-        if (page < 0 || size <= 0) {
-            throw new BizException("INVALID_PARAM", "Invalid pagination parameters: page must be >= 0 and size must be > 0");
-        }
-
-        Pageable pageable = PageRequest.of(page, size);
+        Pageable pageable = PageUtils.pageable(page, size);
         if (!StringUtils.hasText(keyword)) {
             return articleSearchRepository.findByUserId(userId, pageable).map(this::toSearchVO);
         }

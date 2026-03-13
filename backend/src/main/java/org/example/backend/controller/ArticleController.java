@@ -1,9 +1,9 @@
 package org.example.backend.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.auth.AuthUtils;
 import org.example.backend.common.response.PageResult;
 import org.example.backend.common.response.Result;
-import org.example.backend.config.LoginUserPrincipal;
 import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleSummaryVO;
 import org.example.backend.service.core.article.ArticleQueryService;
@@ -25,7 +25,7 @@ public class ArticleController {
     @GetMapping("/{articleId}")
     public Result<ArticleDetailVO> getArticle(@PathVariable("articleId") Long articleId,
                                               Authentication authentication) {
-        Long viewerUserId = tryGetViewerUserId(authentication);
+        Long viewerUserId = AuthUtils.tryGetLoginUserId(authentication);
         ArticleDetailVO article = articleQueryService.getPublishedArticle(viewerUserId, articleId);
         return Result.success(article);
     }
@@ -37,7 +37,7 @@ public class ArticleController {
                                                              @RequestParam(value = "page", defaultValue = "0") int page,
                                                              @RequestParam(value = "size", defaultValue = "20") int size,
                                                              Authentication authentication) {
-        Long viewerUserId = tryGetViewerUserId(authentication);
+        Long viewerUserId = AuthUtils.tryGetLoginUserId(authentication);
         Page<ArticleSummaryVO> pageData = articleQueryService.listPublishedArticles(
                 viewerUserId,
                 userId,
@@ -47,12 +47,5 @@ public class ArticleController {
                 size
         );
         return Result.success(PageResult.from(pageData));
-    }
-
-    private Long tryGetViewerUserId(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof LoginUserPrincipal principal)) {
-            return null;
-        }
-        return principal.getUserId();
     }
 }
