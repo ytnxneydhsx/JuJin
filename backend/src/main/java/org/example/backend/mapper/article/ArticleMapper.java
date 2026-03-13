@@ -112,6 +112,27 @@ public interface ArticleMapper {
               a.updated_at AS updatedAt
             FROM article a
             LEFT JOIN article_stats s ON s.article_id = a.id
+            WHERE a.id = #{articleId}
+              AND a.status = 1
+            """)
+    ArticleEntity selectPublishedCardById(@Param("articleId") Long articleId);
+
+    @Select("""
+            SELECT
+              a.id AS id,
+              a.user_id AS userId,
+              a.title AS title,
+              a.summary AS summary,
+              a.cover_url AS coverUrl,
+              a.status AS status,
+              COALESCE(s.like_count, 0) AS likeCount,
+              COALESCE(s.favorite_count, 0) AS favoriteCount,
+              COALESCE(s.view_count, 0) AS viewCount,
+              a.published_at AS publishedAt,
+              a.created_at AS createdAt,
+              a.updated_at AS updatedAt
+            FROM article a
+            LEFT JOIN article_stats s ON s.article_id = a.id
             WHERE a.user_id = #{userId}
               AND a.status <> 3
             ORDER BY a.updated_at DESC
@@ -214,7 +235,7 @@ public interface ArticleMapper {
             JOIN article a ON a.id = s.article_id
             SET s.view_count = #{viewCount}
             WHERE a.id = #{articleId}
-              AND a.status = 1
+              AND a.status <> 3
             """)
     int updateViewCountById(@Param("articleId") Long articleId,
                             @Param("viewCount") Long viewCount);
@@ -266,6 +287,16 @@ public interface ArticleMapper {
               AND s.favorite_count > 0
             """)
     int decrementFavoriteCountById(@Param("articleId") Long articleId);
+
+    @Update("""
+            UPDATE article_stats s
+            JOIN article a ON a.id = s.article_id
+            SET s.favorite_count = #{favoriteCount}
+            WHERE a.id = #{articleId}
+              AND a.status <> 3
+            """)
+    int updateFavoriteCountById(@Param("articleId") Long articleId,
+                                @Param("favoriteCount") Long favoriteCount);
 
     @Insert("""
             INSERT INTO article_content(article_id, content)

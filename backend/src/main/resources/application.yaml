@@ -41,15 +41,14 @@ app:
       - png
       - webp
       - gif
-  view-count-cache:
-    key-prefix: ${VIEW_COUNT_CACHE_KEY_PREFIX:article:view:count:}
-    ttl-seconds: ${VIEW_COUNT_CACHE_TTL_SECONDS:3600}
-    flush-interval-ms: ${VIEW_COUNT_CACHE_FLUSH_INTERVAL_MS:60000}
-  article-like-cache:
-    like-set-key-prefix: ${ARTICLE_LIKE_SET_KEY_PREFIX:article:likes:}
-    like-count-key-prefix: ${ARTICLE_LIKE_COUNT_KEY_PREFIX:article:like_count:}
-    like-init-key-prefix: ${ARTICLE_LIKE_INIT_KEY_PREFIX:article:likes:init:}
-    dirty-article-set-key: ${ARTICLE_LIKE_DIRTY_SET_KEY:article:likes:dirty}
-    ttl-seconds: ${ARTICLE_LIKE_CACHE_TTL_SECONDS:3600}
-    flush-interval-ms: ${ARTICLE_LIKE_FLUSH_INTERVAL_MS:60000}
-    flush-batch-size: ${ARTICLE_LIKE_FLUSH_BATCH_SIZE:500}
+  article-feed-cache:
+    latest-zset-key: ${ARTICLE_FEED_LATEST_ZSET_KEY:article:feed:latest}
+    ranking-zset-key: ${ARTICLE_FEED_RANKING_ZSET_KEY:article:feed:ranking}
+    card-hash-key-prefix: ${ARTICLE_FEED_CARD_HASH_KEY_PREFIX:article:feed:card:}
+    like-user-set-key-prefix: ${ARTICLE_FEED_LIKE_USER_SET_KEY_PREFIX:article:feed:like:users:}
+    favorite-user-set-key-prefix: ${ARTICLE_FEED_FAVORITE_USER_SET_KEY_PREFIX:article:feed:favorite:users:}
+    like-init-key-prefix: ${ARTICLE_FEED_LIKE_INIT_KEY_PREFIX:article:feed:like:init:}
+    favorite-init-key-prefix: ${ARTICLE_FEED_FAVORITE_INIT_KEY_PREFIX:article:feed:favorite:init:}
+    dirty-article-set-key: ${ARTICLE_FEED_DIRTY_ARTICLE_SET_KEY:article:feed:dirty}
+    max-items: ${ARTICLE_FEED_MAX_ITEMS:500}
+    rebuild-interval-ms: ${ARTICLE_FEED_REBUILD_INTERVAL_MS:300000}

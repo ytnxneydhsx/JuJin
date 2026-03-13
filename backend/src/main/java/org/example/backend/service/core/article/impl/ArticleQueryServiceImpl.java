@@ -1,6 +1,7 @@
 package org.example.backend.service.core.article.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.page.PageUtils;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleMapper;
 import org.example.backend.mapper.interaction.ArticleFavoriteMapper;
@@ -8,12 +9,9 @@ import org.example.backend.mapper.interaction.ArticleLikeMapper;
 import org.example.backend.model.entity.ArticleEntity;
 import org.example.backend.model.vo.ArticleDetailVO;
 import org.example.backend.model.vo.ArticleSummaryVO;
+import org.example.backend.service.core.article.ArticleFeedCacheService;
 import org.example.backend.service.core.article.ArticleQueryService;
-import org.example.backend.service.core.article.ArticleViewCountService;
-import org.example.backend.service.core.interaction.ArticleLikeCacheService;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -35,8 +33,7 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
     private final ArticleMapper articleMapper;
     private final ArticleLikeMapper articleLikeMapper;
     private final ArticleFavoriteMapper articleFavoriteMapper;
-    private final ArticleViewCountService articleViewCountService;
-    private final ArticleLikeCacheService articleLikeCacheService;
+    private final ArticleFeedCacheService articleFeedCacheService;
 
     @Override
     public ArticleDetailVO getMyArticle(Long userId, Long articleId) {
@@ -48,8 +45,7 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         }
         ensureContentExists(article);
         ArticleDetailVO detail = toDetailVO(article);
-        detail.setViewCount(articleViewCountService.getViewCount(articleId, detail.getViewCount()));
-        detail.setLikeCount(articleLikeCacheService.getLikeCount(articleId, detail.getLikeCount()));
+        articleFeedCacheService.applyStats(detail);
         applyInteractionState(detail, userId);
         return detail;
     }
@@ -57,18 +53,17 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
     @Override
     public Page<ArticleSummaryVO> listMyArticles(Long userId, int page, int size) {
         validatePositive("userId", userId);
-        Pageable pageable = requirePageable(page, size);
-        int offset = Math.toIntExact(pageable.getOffset());
+        Pageable pageable = PageUtils.pageable(page, size);
+        int offset = PageUtils.offset(pageable);
 
         List<ArticleSummaryVO> records = articleMapper.selectPageByUserId(userId, offset, pageable.getPageSize())
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
-        applyViewCount(records);
-        applyLikeCount(records);
+        articleFeedCacheService.applyStats(records);
         applyInteractionState(records, userId);
         long total = articleMapper.countByUserId(userId);
-        return new PageImpl<>(records, pageable, total);
+        return PageUtils.page(records, pageable, total);
     }
 
     @Override
@@ -79,10 +74,9 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
         ensureContentExists(article);
-        long latestViewCount = articleViewCountService.increaseAndGet(articleId, article.getViewCount());
+        articleFeedCacheService.recordView(article);
         ArticleDetailVO detail = toDetailVO(article);
-        detail.setViewCount(latestViewCount);
-        detail.setLikeCount(articleLikeCacheService.getLikeCount(articleId, detail.getLikeCount()));
+        articleFeedCacheService.applyStats(detail);
         applyInteractionState(detail, viewerUserId);
         return detail;
     }
@@ -97,10 +91,19 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         if (authorUserId != null && authorUserId <= 0) {
             throw new BizException("INVALID_PARAM", "userId must be a positive number");
         }
-        Pageable pageable = requirePageable(page, size);
-        int offset = Math.toIntExact(pageable.getOffset());
+        Pageable pageable = PageUtils.pageable(page, size);
+        int offset = PageUtils.offset(pageable);
         String normalizedSortBy = normalizeSortBy(sortBy);
         String normalizedSortOrder = normalizeSortOrder(sortOrder);
+
+        if (authorUserId == null && SORT_ORDER_DESC.equals(normalizedSortOrder)) {
+            Page<ArticleSummaryVO> cachedPage = articleFeedCacheService.listFeed(normalizedSortBy, page, size);
+            if (!cachedPage.getContent().isEmpty()) {
+                applyInteractionState(cachedPage.getContent(), viewerUserId);
+                long total = articleMapper.countPublished(null);
+                return PageUtils.page(cachedPage.getContent(), pageable, total);
+            }
+        }
 
         List<ArticleSummaryVO> records = articleMapper.selectPublishedPage(
                         authorUserId,
@@ -112,24 +115,16 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
-        applyViewCount(records);
-        applyLikeCount(records);
+        articleFeedCacheService.applyStats(records);
         applyInteractionState(records, viewerUserId);
         long total = articleMapper.countPublished(authorUserId);
-        return new PageImpl<>(records, pageable, total);
+        return PageUtils.page(records, pageable, total);
     }
 
     private void validatePositive(String fieldName, Long value) {
         if (value == null || value <= 0) {
             throw new BizException("INVALID_PARAM", fieldName + " must be a positive number");
         }
-    }
-
-    private Pageable requirePageable(int page, int size) {
-        if (page < 0 || size <= 0) {
-            throw new BizException("INVALID_PARAM", "Invalid pagination parameters: page must be >= 0 and size must be > 0");
-        }
-        return PageRequest.of(page, size);
     }
 
     private void ensureContentExists(ArticleEntity entity) {
@@ -182,8 +177,9 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         Integer likeStatus = articleLikeMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
         Integer favoriteStatus = articleFavoriteMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
         boolean mysqlLiked = likeStatus != null && likeStatus == RELATION_ACTIVE;
-        detail.setLiked(articleLikeCacheService.resolveLiked(viewerUserId, detail.getArticleId(), mysqlLiked));
-        detail.setFavorited(favoriteStatus != null && favoriteStatus == RELATION_ACTIVE);
+        boolean mysqlFavorited = favoriteStatus != null && favoriteStatus == RELATION_ACTIVE;
+        detail.setLiked(articleFeedCacheService.resolveLiked(viewerUserId, detail.getArticleId(), mysqlLiked));
+        detail.setFavorited(articleFeedCacheService.resolveFavorited(viewerUserId, detail.getArticleId(), mysqlFavorited));
     }
 
     private void applyInteractionState(List<ArticleSummaryVO> records, Long viewerUserId) {
@@ -203,25 +199,17 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
                 articleIds
         ));
         records.forEach(item -> {
-            item.setLiked(articleLikeCacheService.resolveLiked(
+            item.setLiked(articleFeedCacheService.resolveLiked(
                     viewerUserId,
                     item.getArticleId(),
                     likedIds.contains(item.getArticleId())
             ));
-            item.setFavorited(favoritedIds.contains(item.getArticleId()));
+            item.setFavorited(articleFeedCacheService.resolveFavorited(
+                    viewerUserId,
+                    item.getArticleId(),
+                    favoritedIds.contains(item.getArticleId())
+            ));
         });
-    }
-
-    private void applyLikeCount(List<ArticleSummaryVO> records) {
-        records.forEach(item -> item.setLikeCount(
-                articleLikeCacheService.getLikeCount(item.getArticleId(), item.getLikeCount())
-        ));
-    }
-
-    private void applyViewCount(List<ArticleSummaryVO> records) {
-        records.forEach(item -> item.setViewCount(
-                articleViewCountService.getViewCount(item.getArticleId(), item.getViewCount())
-        ));
     }
 
     private String normalizeSortBy(String sortBy) {
