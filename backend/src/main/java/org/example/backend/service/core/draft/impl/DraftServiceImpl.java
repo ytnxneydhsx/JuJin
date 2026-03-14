@@ -1,8 +1,10 @@
 package org.example.backend.service.core.draft.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.constant.AppConstants.ArticleStatus;
+import org.example.backend.common.constant.AppConstants.DraftStatus;
 import org.example.backend.common.page.PageUtils;
-import org.example.backend.event.article.ArticleSearchSyncEvent;
+import org.example.backend.event.article.ArticleChangedEvent;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleDraftMapper;
 import org.example.backend.mapper.article.ArticleMapper;
@@ -24,11 +26,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DraftServiceImpl implements DraftService {
 
-    private static final int ARTICLE_STATUS_PUBLISHED = 1;
-    private static final int DRAFT_STATUS_DRAFT = 1;
-    private static final int DRAFT_STATUS_PUBLISHED = 2;
-    private static final int DRAFT_STATUS_DELETED = 3;
-
     private final ArticleMapper articleMapper;
     private final ArticleDraftMapper articleDraftMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -40,7 +37,7 @@ public class DraftServiceImpl implements DraftService {
         ArticleDraftEntity entity = new ArticleDraftEntity();
         entity.setUserId(userId);
         entity.setArticleId(dto.getArticleId());
-        entity.setStatus(DRAFT_STATUS_DRAFT);
+        entity.setStatus(DraftStatus.DRAFT);
         entity.setTitle(trimToNull(dto.getTitle()));
         entity.setSummary(trimToNull(dto.getSummary()));
         entity.setCoverUrl(trimToNull(dto.getCoverUrl()));
@@ -62,7 +59,7 @@ public class DraftServiceImpl implements DraftService {
                 draftId,
                 userId,
                 dto.getArticleId(),
-                DRAFT_STATUS_DRAFT,
+                DraftStatus.DRAFT,
                 trimToNull(dto.getTitle()),
                 trimToNull(dto.getSummary()),
                 trimToNull(dto.getCoverUrl()),
@@ -78,7 +75,7 @@ public class DraftServiceImpl implements DraftService {
         validateUserId(userId);
         validatePositive("draftId", draftId);
         ArticleDraftEntity draft = articleDraftMapper.selectByIdAndUserId(draftId, userId);
-        if (draft == null || draft.getStatus() == null || draft.getStatus() != DRAFT_STATUS_DRAFT) {
+        if (draft == null || draft.getStatus() == null || draft.getStatus() != DraftStatus.DRAFT) {
             throw new BizException("DRAFT_NOT_FOUND", "Draft not found");
         }
         return toDraftVO(draft);
@@ -92,14 +89,14 @@ public class DraftServiceImpl implements DraftService {
 
         List<ArticleDraftVO> records = articleDraftMapper.selectPageByUserId(
                         userId,
-                        DRAFT_STATUS_DRAFT,
+                        DraftStatus.DRAFT,
                         offset,
                         pageable.getPageSize()
                 )
                 .stream()
                 .map(this::toDraftVO)
                 .toList();
-        long total = articleDraftMapper.countByUserId(userId, DRAFT_STATUS_DRAFT);
+        long total = articleDraftMapper.countByUserId(userId, DraftStatus.DRAFT);
         return PageUtils.page(records, pageable, total);
     }
 
@@ -113,10 +110,10 @@ public class DraftServiceImpl implements DraftService {
         if (draft == null) {
             throw new BizException("DRAFT_NOT_FOUND", "Draft not found");
         }
-        if (draft.getStatus() == null || draft.getStatus() == DRAFT_STATUS_DELETED) {
+        if (draft.getStatus() == null || draft.getStatus() == DraftStatus.DELETED) {
             throw new BizException("DRAFT_NOT_FOUND", "Draft not found");
         }
-        if (draft.getStatus() == DRAFT_STATUS_PUBLISHED) {
+        if (draft.getStatus() == DraftStatus.PUBLISHED) {
             throw new BizException("DRAFT_ALREADY_PUBLISHED", "Draft is already published");
         }
 
@@ -133,7 +130,7 @@ public class DraftServiceImpl implements DraftService {
             entity.setTitle(title);
             entity.setSummary(trimToNull(draft.getSummary()));
             entity.setCoverUrl(trimToNull(draft.getCoverUrl()));
-            entity.setStatus(ARTICLE_STATUS_PUBLISHED);
+            entity.setStatus(ArticleStatus.PUBLISHED);
             int inserted = articleMapper.insert(entity);
             if (inserted != 1 || entity.getId() == null) {
                 throw new BizException("ARTICLE_PUBLISH_FAILED", "Failed to publish article");
@@ -148,7 +145,7 @@ public class DraftServiceImpl implements DraftService {
                     title,
                     trimToNull(draft.getSummary()),
                     trimToNull(draft.getCoverUrl()),
-                    ARTICLE_STATUS_PUBLISHED
+                    ArticleStatus.PUBLISHED
             );
             if (updated != 1) {
                 throw new BizException("ARTICLE_NOT_FOUND", "Related article not found");
@@ -161,13 +158,13 @@ public class DraftServiceImpl implements DraftService {
                 draftId,
                 userId,
                 articleId,
-                DRAFT_STATUS_PUBLISHED,
-                DRAFT_STATUS_DRAFT
+                DraftStatus.PUBLISHED,
+                DraftStatus.DRAFT
         );
         if (draftUpdated != 1) {
             throw new BizException("DRAFT_STATE_CONFLICT", "Draft status changed unexpectedly");
         }
-        publishArticleSearchSyncEvent(articleId);
+        publishArticleChangedEvent(articleId);
         return articleId;
     }
 
@@ -179,8 +176,8 @@ public class DraftServiceImpl implements DraftService {
         int affected = articleDraftMapper.softDeleteByIdAndUserId(
                 draftId,
                 userId,
-                DRAFT_STATUS_DELETED,
-                DRAFT_STATUS_DRAFT
+                DraftStatus.DELETED,
+                DraftStatus.DRAFT
         );
         if (affected != 1) {
             throw new BizException("DRAFT_NOT_FOUND", "Draft not found");
@@ -217,7 +214,7 @@ public class DraftServiceImpl implements DraftService {
                 .build();
     }
 
-    private void publishArticleSearchSyncEvent(Long articleId) {
-        eventPublisher.publishEvent(new ArticleSearchSyncEvent(articleId));
+    private void publishArticleChangedEvent(Long articleId) {
+        eventPublisher.publishEvent(new ArticleChangedEvent(articleId));
     }
 }

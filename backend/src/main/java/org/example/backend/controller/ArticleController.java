@@ -2,6 +2,7 @@ package org.example.backend.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.example.backend.common.auth.AuthUtils;
+import org.example.backend.common.constant.AppConstants.ArticleSort;
 import org.example.backend.common.response.PageResult;
 import org.example.backend.common.response.Result;
 import org.example.backend.model.vo.ArticleDetailVO;
@@ -32,8 +33,8 @@ public class ArticleController {
 
     @GetMapping
     public Result<PageResult<ArticleSummaryVO>> listArticles(@RequestParam(value = "userId", required = false) Long userId,
-                                                             @RequestParam(value = "sortBy", required = false, defaultValue = "publishedAt") String sortBy,
-                                                             @RequestParam(value = "sortOrder", required = false, defaultValue = "desc") String sortOrder,
+                                                             @RequestParam(value = "sortBy", required = false, defaultValue = ArticleSort.BY_PUBLISHED_AT) String sortBy,
+                                                             @RequestParam(value = "sortOrder", required = false, defaultValue = ArticleSort.ORDER_DESC) String sortOrder,
                                                              @RequestParam(value = "page", defaultValue = "0") int page,
                                                              @RequestParam(value = "size", defaultValue = "20") int size,
                                                              Authentication authentication) {

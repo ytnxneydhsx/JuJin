@@ -1,6 +1,8 @@
 package org.example.backend.service.core.comment.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.constant.AppConstants.CommentStatus;
+import org.example.backend.common.constant.AppConstants.RelationStatus;
 import org.example.backend.common.page.PageUtils;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleMapper;
@@ -29,9 +31,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CommentServiceImpl implements CommentService {
 
-    private static final int COMMENT_STATUS_NORMAL = 1;
-    private static final int COMMENT_STATUS_DELETED = 2;
-    private static final int RELATION_ACTIVE = 1;
     private static final int ROOT_CHILD_PREVIEW_SIZE = 5;
 
     private final ArticleMapper articleMapper;
@@ -67,8 +66,8 @@ public class CommentServiceImpl implements CommentService {
         int affected = articleCommentMapper.updateStatusByIdAndUserId(
                 commentId,
                 userId,
-                COMMENT_STATUS_DELETED,
-                COMMENT_STATUS_NORMAL
+                CommentStatus.DELETED,
+                CommentStatus.NORMAL
         );
         if (affected != 1) {
             throw new BizException("COMMENT_NOT_FOUND", "Comment not found");
@@ -83,12 +82,12 @@ public class CommentServiceImpl implements CommentService {
 
         List<ArticleCommentEntity> rootEntities = articleCommentMapper.selectRootPageByArticleId(
                 articleId,
-                COMMENT_STATUS_NORMAL,
+                CommentStatus.NORMAL,
                 offset,
                 pageable.getPageSize()
         );
         List<ArticleCommentVO> records = buildRootCommentTree(articleId, rootEntities, viewerUserId);
-        long total = articleCommentMapper.countRootByArticleId(articleId, COMMENT_STATUS_NORMAL);
+        long total = articleCommentMapper.countRootByArticleId(articleId, CommentStatus.NORMAL);
         return PageUtils.page(records, pageable, total);
     }
 
@@ -103,12 +102,12 @@ public class CommentServiceImpl implements CommentService {
         List<ArticleCommentEntity> childEntities = articleCommentMapper.selectChildPageByArticleIdAndParentId(
                 articleId,
                 parentId,
-                COMMENT_STATUS_NORMAL,
+                CommentStatus.NORMAL,
                 offset,
                 pageable.getPageSize()
         );
         List<ArticleCommentVO> records = buildCommentVOs(articleId, childEntities, viewerUserId);
-        long total = articleCommentMapper.countChildByArticleIdAndParentId(articleId, parentId, COMMENT_STATUS_NORMAL);
+        long total = articleCommentMapper.countChildByArticleIdAndParentId(articleId, parentId, CommentStatus.NORMAL);
         return PageUtils.page(records, pageable, total);
     }
 
@@ -120,7 +119,7 @@ public class CommentServiceImpl implements CommentService {
         entity.setParentId(null);
         entity.setReplyToUserId(null);
         entity.setContent(content);
-        entity.setStatus(COMMENT_STATUS_NORMAL);
+        entity.setStatus(CommentStatus.NORMAL);
 
         int affected = articleCommentMapper.insert(entity);
         if (affected != 1 || entity.getId() == null) {
@@ -138,7 +137,7 @@ public class CommentServiceImpl implements CommentService {
         ArticleCommentEntity parent = articleCommentMapper.selectByIdAndArticleId(
                 parentId,
                 articleId,
-                COMMENT_STATUS_NORMAL
+                CommentStatus.NORMAL
         );
         if (parent == null) {
             throw new BizException("PARENT_COMMENT_NOT_FOUND", "Parent comment not found");
@@ -156,7 +155,7 @@ public class CommentServiceImpl implements CommentService {
         entity.setParentId(parent.getId());
         entity.setReplyToUserId(parent.getUserId());
         entity.setContent(content);
-        entity.setStatus(COMMENT_STATUS_NORMAL);
+        entity.setStatus(CommentStatus.NORMAL);
 
         int affected = articleCommentMapper.insert(entity);
         if (affected != 1 || entity.getId() == null) {
@@ -175,7 +174,7 @@ public class CommentServiceImpl implements CommentService {
         ArticleCommentEntity entity = articleCommentMapper.selectByIdAndArticleId(
                 commentId,
                 articleId,
-                COMMENT_STATUS_NORMAL
+                CommentStatus.NORMAL
         );
         if (entity == null) {
             throw new BizException("COMMENT_NOT_FOUND", "Comment not found");
@@ -223,7 +222,7 @@ public class CommentServiceImpl implements CommentService {
         List<ArticleCommentEntity> previewEntities = articleCommentMapper.selectChildPreviewByArticleIdAndParentIds(
                 articleId,
                 rootIds,
-                COMMENT_STATUS_NORMAL,
+                CommentStatus.NORMAL,
                 ROOT_CHILD_PREVIEW_SIZE
         );
         List<ArticleCommentVO> previewChildren = buildCommentVOs(articleId, previewEntities, viewerUserId);
@@ -263,7 +262,7 @@ public class CommentServiceImpl implements CommentService {
         return articleCommentMapper.selectChildCountsByArticleIdAndParentIds(
                         articleId,
                         parentIds,
-                        COMMENT_STATUS_NORMAL
+                        CommentStatus.NORMAL
                 )
                 .stream()
                 .collect(Collectors.toMap(CommentChildCountDTO::getParentId, CommentChildCountDTO::getChildCount));
@@ -277,7 +276,7 @@ public class CommentServiceImpl implements CommentService {
         List<Long> commentIds = records.stream().map(ArticleCommentVO::getCommentId).toList();
         List<Long> likedIds = commentLikeMapper.selectCommentIdsByUserIdAndStatus(
                 viewerUserId,
-                RELATION_ACTIVE,
+                RelationStatus.ACTIVE,
                 commentIds
         );
         Set<Long> likedIdSet = new HashSet<>(likedIds);

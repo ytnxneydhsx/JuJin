@@ -1,6 +1,8 @@
 package org.example.backend.service.core.interaction.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.constant.AppConstants.CommentStatus;
+import org.example.backend.common.constant.AppConstants.RelationStatus;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.comment.ArticleCommentMapper;
 import org.example.backend.mapper.interaction.CommentLikeMapper;
@@ -13,10 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CommentInteractionServiceImpl implements CommentInteractionService {
 
-    private static final int COMMENT_STATUS_NORMAL = 1;
-    private static final int RELATION_ACTIVE = 1;
-    private static final int RELATION_CANCELLED = 0;
-
     private final ArticleCommentMapper articleCommentMapper;
     private final CommentLikeMapper commentLikeMapper;
 
@@ -28,14 +26,14 @@ public class CommentInteractionServiceImpl implements CommentInteractionService 
         ensureCommentExists(commentId);
 
         try {
-            commentLikeMapper.insert(userId, commentId, RELATION_ACTIVE);
+            commentLikeMapper.insert(userId, commentId, RelationStatus.ACTIVE);
             return true;
         } catch (DuplicateKeyException ex) {
             int toCancelled = commentLikeMapper.updateStatusByUserIdAndCommentId(
                     userId,
                     commentId,
-                    RELATION_CANCELLED,
-                    RELATION_ACTIVE
+                    RelationStatus.CANCELLED,
+                    RelationStatus.ACTIVE
             );
             if (toCancelled == 1) {
                 return false;
@@ -44,8 +42,8 @@ public class CommentInteractionServiceImpl implements CommentInteractionService 
             int toActive = commentLikeMapper.updateStatusByUserIdAndCommentId(
                     userId,
                     commentId,
-                    RELATION_ACTIVE,
-                    RELATION_CANCELLED
+                    RelationStatus.ACTIVE,
+                    RelationStatus.CANCELLED
             );
             if (toActive == 1) {
                 return true;
@@ -56,7 +54,7 @@ public class CommentInteractionServiceImpl implements CommentInteractionService 
     }
 
     private void ensureCommentExists(Long commentId) {
-        if (articleCommentMapper.countByIdAndStatus(commentId, COMMENT_STATUS_NORMAL) != 1) {
+        if (articleCommentMapper.countByIdAndStatus(commentId, CommentStatus.NORMAL) != 1) {
             throw new BizException("COMMENT_NOT_FOUND", "Comment not found");
         }
     }

@@ -1,7 +1,8 @@
 package org.example.backend.service.core.article.impl;
 
 import lombok.RequiredArgsConstructor;
-import org.example.backend.event.article.ArticleSearchSyncEvent;
+import org.example.backend.common.constant.AppConstants.ArticleStatus;
+import org.example.backend.event.article.ArticleChangedEvent;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleMapper;
 import org.example.backend.model.dto.article.UpdateArticleDTO;
@@ -14,9 +15,6 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 public class ArticleServiceImpl implements ArticleService {
-
-    private static final int STATUS_PUBLISHED = 1;
-    private static final int STATUS_HIDDEN = 2;
 
     private final ArticleMapper articleMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -34,7 +32,7 @@ public class ArticleServiceImpl implements ArticleService {
         }
 
         Integer status = dto.getStatus();
-        if (status != null && (status != STATUS_PUBLISHED && status != STATUS_HIDDEN)) {
+        if (status != null && (status != ArticleStatus.PUBLISHED && status != ArticleStatus.HIDDEN)) {
             throw new BizException("INVALID_PARAM", "status must be 1 or 2");
         }
 
@@ -51,7 +49,7 @@ public class ArticleServiceImpl implements ArticleService {
         }
         articleMapper.upsertContentByArticleId(articleId, content);
         articleMapper.ensureStatsByArticleId(articleId, 0L, 0L, 0L);
-        publishArticleSearchSyncEvent(articleId);
+        publishArticleChangedEvent(articleId);
     }
 
     @Override
@@ -63,7 +61,7 @@ public class ArticleServiceImpl implements ArticleService {
         if (affected != 1) {
             throw new BizException("ARTICLE_NOT_FOUND", "Article not found");
         }
-        publishArticleSearchSyncEvent(articleId);
+        publishArticleChangedEvent(articleId);
     }
 
     private void validateUserId(Long userId) {
@@ -83,7 +81,7 @@ public class ArticleServiceImpl implements ArticleService {
         return value.trim();
     }
 
-    private void publishArticleSearchSyncEvent(Long articleId) {
-        eventPublisher.publishEvent(new ArticleSearchSyncEvent(articleId));
+    private void publishArticleChangedEvent(Long articleId) {
+        eventPublisher.publishEvent(new ArticleChangedEvent(articleId));
     }
 }

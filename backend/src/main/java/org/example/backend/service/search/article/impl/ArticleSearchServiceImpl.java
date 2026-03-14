@@ -1,6 +1,7 @@
 package org.example.backend.service.search.article.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.constant.AppConstants.ArticleStatus;
 import org.example.backend.common.page.PageUtils;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.search.ArticleSearchMapper;
@@ -19,8 +20,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ArticleSearchServiceImpl implements ArticleSearchService {
-
-    private static final int STATUS_PUBLISHED = 1;
 
     private final ArticleSearchMapper articleSearchMapper;
     private final ArticleSearchRepository articleSearchRepository;
@@ -71,7 +70,7 @@ public class ArticleSearchServiceImpl implements ArticleSearchService {
     }
 
     private boolean isPublished(ArticleSearchSource source) {
-        return source != null && source.getStatus() != null && source.getStatus() == STATUS_PUBLISHED;
+        return source != null && source.getStatus() != null && source.getStatus() == ArticleStatus.PUBLISHED;
     }
 
     private ArticleSearchDocument toDocument(ArticleSearchSource source) {

@@ -1,8 +1,8 @@
 package org.example.backend.event.article;
 
-public record ArticleSearchSyncEvent(Long articleId) {
+public record ArticleChangedEvent(Long articleId) {
 
-    public ArticleSearchSyncEvent {
+    public ArticleChangedEvent {
         if (articleId == null || articleId <= 0) {
             throw new IllegalArgumentException("articleId must be a positive number");
         }

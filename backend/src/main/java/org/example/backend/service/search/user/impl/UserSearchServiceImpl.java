@@ -1,6 +1,7 @@
 package org.example.backend.service.search.user.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.constant.AppConstants.UserStatus;
 import org.example.backend.common.page.PageUtils;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.search.UserSearchMapper;
@@ -19,8 +20,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class UserSearchServiceImpl implements UserSearchService {
-
-    private static final int ACTIVE_STATUS = 1;
 
     private final UserSearchMapper userSearchMapper;
     private final UserSearchRepository userSearchRepository;
@@ -46,7 +45,7 @@ public class UserSearchServiceImpl implements UserSearchService {
     public long rebuildIndex() {
         List<UserSearchSource> sources = userSearchMapper.selectAllForSearch();
         List<UserSearchDocument> docs = sources.stream()
-                .filter(source -> source.getStatus() != null && source.getStatus() == ACTIVE_STATUS)
+                .filter(source -> source.getStatus() != null && source.getStatus() == UserStatus.ACTIVE)
                 .map(this::toDocument)
                 .toList();
 
@@ -58,7 +57,7 @@ public class UserSearchServiceImpl implements UserSearchService {
     @Override
     public void syncByAccount(String account) {
         UserSearchSource source = userSearchMapper.selectByAccountForSearch(account);
-        if (source == null || source.getStatus() == null || source.getStatus() != ACTIVE_STATUS) {
+        if (source == null || source.getStatus() == null || source.getStatus() != UserStatus.ACTIVE) {
             userSearchRepository.deleteById(account);
             return;
         }

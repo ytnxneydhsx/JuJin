@@ -1,6 +1,7 @@
 package org.example.backend.service.core.user.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.example.backend.common.constant.AppConstants.UserStatus;
 import org.example.backend.event.user.UserSearchSyncEvent;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.user.UserAccountMapper;
@@ -24,8 +25,6 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    private static final int ACTIVE_STATUS = 1;
-
     private final UserAccountMapper userAccountMapper;
     private final UserProfileMapper userProfileMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -43,7 +42,7 @@ public class UserServiceImpl implements UserService {
         UserAccountEntity userAccount = new UserAccountEntity();
         userAccount.setAccount(account);
         userAccount.setPasswordHash(passwordHash);
-        userAccount.setStatus(ACTIVE_STATUS);
+        userAccount.setStatus(UserStatus.ACTIVE);
 
         int baseInserted;
         try {
@@ -83,7 +82,7 @@ public class UserServiceImpl implements UserService {
         }
 
         Integer status = loginSource.getStatus();
-        if (status == null || status != ACTIVE_STATUS) {
+        if (status == null || status != UserStatus.ACTIVE) {
             throw new BizException("USER_DISABLED", "User is disabled");
         }
 
