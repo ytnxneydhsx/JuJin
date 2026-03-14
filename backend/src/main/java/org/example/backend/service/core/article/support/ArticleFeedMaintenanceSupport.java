@@ -9,6 +9,7 @@ import org.example.backend.mapper.article.ArticleMapper;
 import org.example.backend.mapper.interaction.ArticleFavoriteMapper;
 import org.example.backend.mapper.interaction.ArticleLikeMapper;
 import org.example.backend.model.entity.ArticleEntity;
+import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -47,6 +49,7 @@ public class ArticleFeedMaintenanceSupport {
         if (article == null) {
             articleFeedCardSupport.evictArticle(articleId);
             articleFeedStatsSupport.evictInteractionCache(articleId);
+            stringRedisTemplate.opsForSet().remove(articleFeedCacheKeys.dirtyArticleSetKey(), String.valueOf(articleId));
             return;
         }
 
@@ -73,8 +76,8 @@ public class ArticleFeedMaintenanceSupport {
         if (cardExists || inLatest || inRanking || latestEligible || rankingEligible) {
             articleFeedCardSupport.upsertCardHash(article);
         }
-        if (statsExists || dirty || inLatest || inRanking || latestEligible || rankingEligible) {
-            articleFeedStatsSupport.refreshStatsHash(article, dirty);
+        if (!dirty && (statsExists || inLatest || inRanking || latestEligible || rankingEligible)) {
+            articleFeedStatsSupport.refreshStatsHash(article);
         }
         if (inLatest || latestEligible) {
             stringRedisTemplate.opsForZSet().add(
@@ -194,16 +197,24 @@ public class ArticleFeedMaintenanceSupport {
         stringRedisTemplate.delete(latestTmpKey);
         stringRedisTemplate.delete(rankingTmpKey);
 
-        latestArticles.forEach(article -> stringRedisTemplate.opsForZSet().add(
+        batchAddToZSet(
                 latestTmpKey,
-                String.valueOf(article.getId()),
-                articleFeedCardSupport.publishedAtScore(article.getPublishedAt())
-        ));
-        rankingArticles.forEach(article -> stringRedisTemplate.opsForZSet().add(
+                latestArticles.stream()
+                        .map(article -> new DefaultTypedTuple<>(
+                                String.valueOf(article.getId()),
+                                articleFeedCardSupport.publishedAtScore(article.getPublishedAt())
+                        ))
+                        .collect(Collectors.toSet())
+        );
+        batchAddToZSet(
                 rankingTmpKey,
-                String.valueOf(article.getId()),
-                articleFeedCardSupport.longScore(article.getViewCount())
-        ));
+                rankingArticles.stream()
+                        .map(article -> new DefaultTypedTuple<>(
+                                String.valueOf(article.getId()),
+                                articleFeedCardSupport.longScore(article.getViewCount())
+                        ))
+                        .collect(Collectors.toSet())
+        );
 
         Set<String> dirtyArticles = stringRedisTemplate.opsForSet().members(articleFeedCacheKeys.dirtyArticleSetKey());
         Map<Long, ArticleEntity> unionArticles = new LinkedHashMap<>();
@@ -212,10 +223,9 @@ public class ArticleFeedMaintenanceSupport {
 
         unionArticles.values().forEach(article -> {
             articleFeedCardSupport.upsertCardHash(article);
-            articleFeedStatsSupport.refreshStatsHash(
-                    article,
-                    dirtyArticles != null && dirtyArticles.contains(String.valueOf(article.getId()))
-            );
+            if (dirtyArticles == null || !dirtyArticles.contains(String.valueOf(article.getId()))) {
+                articleFeedStatsSupport.refreshStatsHash(article);
+            }
         });
 
         if (latestArticles.isEmpty()) {
@@ -326,5 +336,12 @@ public class ArticleFeedMaintenanceSupport {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private void batchAddToZSet(String key, Set<ZSetOperations.TypedTuple<String>> tuples) {
+        if (tuples == null || tuples.isEmpty()) {
+            return;
+        }
+        stringRedisTemplate.opsForZSet().add(key, tuples);
     }
 }
