@@ -1,6 +1,11 @@
 package org.example.backend.service.core.article.impl;
 
-import lombok.RequiredArgsConstructor;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import org.example.backend.common.constant.AppConstants.ArticleSort;
+import org.example.backend.common.constant.AppConstants.RelationStatus;
 import org.example.backend.common.page.PageUtils;
 import org.example.backend.exception.BizException;
 import org.example.backend.mapper.article.ArticleMapper;
@@ -16,19 +21,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
 public class ArticleQueryServiceImpl implements ArticleQueryService {
-
-    private static final int RELATION_ACTIVE = 1;
-    private static final String SORT_BY_PUBLISHED_AT = "publishedAt";
-    private static final String SORT_BY_VIEW_COUNT = "viewCount";
-    private static final String SORT_ORDER_ASC = "asc";
-    private static final String SORT_ORDER_DESC = "desc";
 
     private final ArticleMapper articleMapper;
     private final ArticleLikeMapper articleLikeMapper;
@@ -95,8 +92,8 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         int offset = PageUtils.offset(pageable);
         String normalizedSortBy = normalizeSortBy(sortBy);
         String normalizedSortOrder = normalizeSortOrder(sortOrder);
-
-        if (authorUserId == null && SORT_ORDER_DESC.equals(normalizedSortOrder)) {
+        //查询首页 不需要作者id作为条件进行查询
+        if (authorUserId == null && ArticleSort.ORDER_DESC.equals(normalizedSortOrder)) {
             Page<ArticleSummaryVO> cachedPage = articleFeedCacheService.listFeed(normalizedSortBy, page, size);
             if (!cachedPage.getContent().isEmpty()) {
                 applyInteractionState(cachedPage.getContent(), viewerUserId);
@@ -104,7 +101,7 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
                 return PageUtils.page(cachedPage.getContent(), pageable, total);
             }
         }
-
+        // 查询某个作者的文章 需要作者id 先去命中mysql 再用redis的信息覆盖
         List<ArticleSummaryVO> records = articleMapper.selectPublishedPage(
                         authorUserId,
                         offset,
@@ -176,8 +173,8 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         }
         Integer likeStatus = articleLikeMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
         Integer favoriteStatus = articleFavoriteMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
-        boolean mysqlLiked = likeStatus != null && likeStatus == RELATION_ACTIVE;
-        boolean mysqlFavorited = favoriteStatus != null && favoriteStatus == RELATION_ACTIVE;
+        boolean mysqlLiked = likeStatus != null && likeStatus == RelationStatus.ACTIVE;
+        boolean mysqlFavorited = favoriteStatus != null && favoriteStatus == RelationStatus.ACTIVE;
         detail.setLiked(articleFeedCacheService.resolveLiked(viewerUserId, detail.getArticleId(), mysqlLiked));
         detail.setFavorited(articleFeedCacheService.resolveFavorited(viewerUserId, detail.getArticleId(), mysqlFavorited));
     }
@@ -190,12 +187,12 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         List<Long> articleIds = records.stream().map(ArticleSummaryVO::getArticleId).toList();
         Set<Long> likedIds = new HashSet<>(articleLikeMapper.selectArticleIdsByUserIdAndStatus(
                 viewerUserId,
-                RELATION_ACTIVE,
+                RelationStatus.ACTIVE,
                 articleIds
         ));
         Set<Long> favoritedIds = new HashSet<>(articleFavoriteMapper.selectArticleIdsByUserIdAndStatus(
                 viewerUserId,
-                RELATION_ACTIVE,
+                RelationStatus.ACTIVE,
                 articleIds
         ));
         records.forEach(item -> {
@@ -214,10 +211,10 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
 
     private String normalizeSortBy(String sortBy) {
         if (!StringUtils.hasText(sortBy)) {
-            return SORT_BY_PUBLISHED_AT;
+            return ArticleSort.BY_PUBLISHED_AT;
         }
         String normalized = sortBy.trim();
-        if (SORT_BY_PUBLISHED_AT.equals(normalized) || SORT_BY_VIEW_COUNT.equals(normalized)) {
+        if (ArticleSort.BY_PUBLISHED_AT.equals(normalized) || ArticleSort.BY_VIEW_COUNT.equals(normalized)) {
             return normalized;
         }
         throw new BizException("INVALID_PARAM", "sortBy must be publishedAt or viewCount");
@@ -225,10 +222,10 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
 
     private String normalizeSortOrder(String sortOrder) {
         if (!StringUtils.hasText(sortOrder)) {
-            return SORT_ORDER_DESC;
+            return ArticleSort.ORDER_DESC;
         }
         String normalized = sortOrder.trim().toLowerCase();
-        if (SORT_ORDER_ASC.equals(normalized) || SORT_ORDER_DESC.equals(normalized)) {
+        if (ArticleSort.ORDER_ASC.equals(normalized) || ArticleSort.ORDER_DESC.equals(normalized)) {
             return normalized;
         }
         throw new BizException("INVALID_PARAM", "sortOrder must be asc or desc");
