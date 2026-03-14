@@ -23,6 +23,7 @@ public class ArticleFeedCardSupport {
     private final ArticleMapper articleMapper;
     private final ArticleFeedCacheKeys articleFeedCacheKeys;
     private final ArticleFeedCardCodec articleFeedCardCodec;
+    private final ArticleFeedStatsSupport articleFeedStatsSupport;
 
     public void applyCard(ArticleDetailVO detail) {
         if (detail == null || detail.getArticleId() == null) {
@@ -75,30 +76,11 @@ public class ArticleFeedCardSupport {
     }
 
     public ArticleSummaryVO getOrLoadSummary(Long articleId) {
-        Map<Object, Object> values = stringRedisTemplate.opsForHash().entries(articleFeedCacheKeys.cardHashKey(articleId));
-        if (values == null || values.isEmpty()) {
-            ArticleEntity article = articleMapper.selectPublishedCardById(articleId);
-            if (article == null) {
-                evictArticle(articleId);
-                return null;
-            }
-            upsertCardHash(article);
-            return ArticleSummaryVO.builder()
-                    .articleId(article.getId())
-                    .userId(article.getUserId())
-                    .title(article.getTitle())
-                    .summary(article.getSummary())
-                    .coverUrl(article.getCoverUrl())
-                    .viewCount(article.getViewCount())
-                    .likeCount(article.getLikeCount())
-                    .favoriteCount(article.getFavoriteCount())
-                    .liked(false)
-                    .favorited(false)
-                    .publishedAt(article.getPublishedAt())
-                    .updatedAt(article.getUpdatedAt())
-                    .build();
+        ArticleSummaryVO summary = loadSummaryFromCache(articleId);
+        if (summary != null && articleFeedStatsSupport.applyStatsIfPresent(summary)) {
+            return summary;
         }
-        return articleFeedCardCodec.toSummaryVO(values);
+        return loadSummaryFromMysqlFallback(articleId);
     }
 
     public double publishedAtScore(LocalDateTime publishedAt) {
@@ -110,6 +92,37 @@ public class ArticleFeedCardSupport {
 
     public double longScore(Long value) {
         return value == null ? 0D : value.doubleValue();
+    }
+
+    private ArticleSummaryVO loadSummaryFromCache(Long articleId) {
+        Map<Object, Object> values = stringRedisTemplate.opsForHash().entries(articleFeedCacheKeys.cardHashKey(articleId));
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        return articleFeedCardCodec.toSummaryVO(values);
+    }
+
+    private ArticleSummaryVO loadSummaryFromMysqlFallback(Long articleId) {
+        ArticleEntity article = articleMapper.selectPublishedCardById(articleId);
+        if (article == null) {
+            evictArticle(articleId);
+            return null;
+        }
+        upsertCardHash(article);
+        return ArticleSummaryVO.builder()
+                .articleId(article.getId())
+                .userId(article.getUserId())
+                .title(article.getTitle())
+                .summary(article.getSummary())
+                .coverUrl(article.getCoverUrl())
+                .viewCount(article.getViewCount())
+                .likeCount(article.getLikeCount())
+                .favoriteCount(article.getFavoriteCount())
+                .liked(false)
+                .favorited(false)
+                .publishedAt(article.getPublishedAt())
+                .updatedAt(article.getUpdatedAt())
+                .build();
     }
 
     private void applyCard(ArticleSummaryVO summary) {

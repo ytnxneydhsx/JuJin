@@ -21,11 +21,15 @@ public interface ArticleFeedCacheService {
 
     void applyStats(ArticleDetailVO detail);
 
-    void applyStats(List<ArticleSummaryVO> records);
+    void applyCacheOverlay(List<ArticleSummaryVO> records);
 
     boolean resolveLiked(Long userId, Long articleId, boolean mysqlFallbackLiked);
 
     boolean resolveFavorited(Long userId, Long articleId, boolean mysqlFallbackFavorited);
+
+    boolean isLikeRelationInitialized(Long articleId);
+
+    boolean isFavoriteRelationInitialized(Long articleId);
 
     void refreshArticle(Long articleId);
 

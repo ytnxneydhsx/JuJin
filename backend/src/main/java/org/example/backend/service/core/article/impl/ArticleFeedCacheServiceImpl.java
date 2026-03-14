@@ -52,12 +52,11 @@ public class ArticleFeedCacheServiceImpl implements ArticleFeedCacheService {
 
     @Override
     public void applyStats(ArticleDetailVO detail) {
-        articleFeedCardSupport.applyCard(detail);
         articleFeedStatsSupport.applyStats(detail);
     }
 
     @Override
-    public void applyStats(List<ArticleSummaryVO> records) {
+    public void applyCacheOverlay(List<ArticleSummaryVO> records) {
         articleFeedCardSupport.applyCard(records);
         articleFeedStatsSupport.applyStats(records);
     }
@@ -70,6 +69,16 @@ public class ArticleFeedCacheServiceImpl implements ArticleFeedCacheService {
     @Override
     public boolean resolveFavorited(Long userId, Long articleId, boolean mysqlFallbackFavorited) {
         return articleFeedInteractionSupport.resolveFavorited(userId, articleId, mysqlFallbackFavorited);
+    }
+
+    @Override
+    public boolean isLikeRelationInitialized(Long articleId) {
+        return articleFeedInteractionSupport.isLikeRelationInitialized(articleId);
+    }
+
+    @Override
+    public boolean isFavoriteRelationInitialized(Long articleId) {
+        return articleFeedInteractionSupport.isFavoriteRelationInitialized(articleId);
     }
 
     @Override

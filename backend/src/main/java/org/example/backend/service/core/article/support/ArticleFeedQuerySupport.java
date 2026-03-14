@@ -21,7 +21,6 @@ public class ArticleFeedQuerySupport {
     private final StringRedisTemplate stringRedisTemplate;
     private final ArticleFeedCacheKeys articleFeedCacheKeys;
     private final ArticleFeedCardSupport articleFeedCardSupport;
-    private final ArticleFeedStatsSupport articleFeedStatsSupport;
 
     public Page<ArticleSummaryVO> listFeed(String sortBy, int page, int size) {
         Pageable pageable = PageUtils.pageable(page, size);
@@ -49,7 +48,6 @@ public class ArticleFeedQuerySupport {
                 records.add(summary);
             }
         }
-        articleFeedStatsSupport.applyStats(records);
         return PageUtils.page(records, pageable, total);
     }
 

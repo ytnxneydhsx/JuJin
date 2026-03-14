@@ -57,7 +57,7 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
-        articleFeedCacheService.applyStats(records);
+        articleFeedCacheService.applyCacheOverlay(records);
         applyInteractionState(records, userId);
         long total = articleMapper.countByUserId(userId);
         return PageUtils.page(records, pageable, total);
@@ -96,8 +96,7 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         if (authorUserId == null && ArticleSort.ORDER_DESC.equals(normalizedSortOrder)) {
             Page<ArticleSummaryVO> cachedPage = articleFeedCacheService.listFeed(normalizedSortBy, page, size);
             if (!cachedPage.getContent().isEmpty()) {
-                applyInteractionState(cachedPage.getContent(), viewerUserId);
-                long total = articleMapper.countPublished(null);
+                long total = cachedPage.getTotalElements();
                 return PageUtils.page(cachedPage.getContent(), pageable, total);
             }
         }
@@ -112,8 +111,7 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
                 .stream()
                 .map(this::toSummaryVO)
                 .toList();
-        articleFeedCacheService.applyStats(records);
-        applyInteractionState(records, viewerUserId);
+        articleFeedCacheService.applyCacheOverlay(records);
         long total = articleMapper.countPublished(authorUserId);
         return PageUtils.page(records, pageable, total);
     }
@@ -171,10 +169,20 @@ public class ArticleQueryServiceImpl implements ArticleQueryService {
         if (viewerUserId == null || viewerUserId <= 0) {
             return;
         }
-        Integer likeStatus = articleLikeMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
-        Integer favoriteStatus = articleFavoriteMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
-        boolean mysqlLiked = likeStatus != null && likeStatus == RelationStatus.ACTIVE;
-        boolean mysqlFavorited = favoriteStatus != null && favoriteStatus == RelationStatus.ACTIVE;
+        boolean likeInitialized = articleFeedCacheService.isLikeRelationInitialized(detail.getArticleId());
+        boolean favoriteInitialized = articleFeedCacheService.isFavoriteRelationInitialized(detail.getArticleId());
+
+        boolean mysqlLiked = false;
+        boolean mysqlFavorited = false;
+        if (!likeInitialized) {
+            Integer likeStatus = articleLikeMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
+            mysqlLiked = likeStatus != null && likeStatus == RelationStatus.ACTIVE;
+        }
+        if (!favoriteInitialized) {
+            Integer favoriteStatus = articleFavoriteMapper.selectStatusByUserIdAndArticleId(viewerUserId, detail.getArticleId());
+            mysqlFavorited = favoriteStatus != null && favoriteStatus == RelationStatus.ACTIVE;
+        }
+
         detail.setLiked(articleFeedCacheService.resolveLiked(viewerUserId, detail.getArticleId(), mysqlLiked));
         detail.setFavorited(articleFeedCacheService.resolveFavorited(viewerUserId, detail.getArticleId(), mysqlFavorited));
     }
