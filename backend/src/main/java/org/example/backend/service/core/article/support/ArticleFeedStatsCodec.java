@@ -12,32 +12,11 @@ import java.util.Map;
 @Component
 public class ArticleFeedStatsCodec {
 
-    public Map<String, String> buildStatsFields(ArticleEntity article, Map<Object, Object> existing, boolean preserveHotStats) {
+    public Map<String, String> buildStatsFields(ArticleEntity article) {
         Map<String, String> fields = new HashMap<>();
-        fields.put(ArticleFeedStatsFields.VIEW_COUNT, String.valueOf(resolveCount(
-                existing,
-                ArticleFeedStatsFields.VIEW_COUNT,
-                article.getViewCount(),
-                preserveHotStats
-        )));
-        fields.put(ArticleFeedStatsFields.LIKE_COUNT, String.valueOf(resolveCount(
-                existing,
-                ArticleFeedStatsFields.LIKE_COUNT,
-                article.getLikeCount(),
-                preserveHotStats
-        )));
-        fields.put(ArticleFeedStatsFields.FAVORITE_COUNT, String.valueOf(resolveCount(
-                existing,
-                ArticleFeedStatsFields.FAVORITE_COUNT,
-                article.getFavoriteCount(),
-                preserveHotStats
-        )));
-        Long lastTouchedAt = preserveHotStats
-                ? readNullableLong(existing, ArticleFeedStatsFields.LAST_TOUCHED_AT, null)
-                : null;
-        if (lastTouchedAt != null) {
-            fields.put(ArticleFeedStatsFields.LAST_TOUCHED_AT, String.valueOf(lastTouchedAt));
-        }
+        fields.put(ArticleFeedStatsFields.VIEW_COUNT, String.valueOf(article.getViewCount() == null ? 0L : article.getViewCount()));
+        fields.put(ArticleFeedStatsFields.LIKE_COUNT, String.valueOf(article.getLikeCount() == null ? 0L : article.getLikeCount()));
+        fields.put(ArticleFeedStatsFields.FAVORITE_COUNT, String.valueOf(article.getFavoriteCount() == null ? 0L : article.getFavoriteCount()));
         return fields;
     }
 
@@ -78,13 +57,6 @@ public class ArticleFeedStatsCodec {
         Object value = values.get(field);
         Long parsed = parseLong(value);
         return parsed == null ? defaultValue : parsed;
-    }
-
-    private long resolveCount(Map<Object, Object> existing, String field, Long mysqlValue, boolean preserveHotStats) {
-        if (!preserveHotStats) {
-            return mysqlValue == null ? 0L : mysqlValue;
-        }
-        return readLong(existing, field, mysqlValue == null ? 0L : mysqlValue);
     }
 
     private Long parseLong(Object value) {

@@ -69,8 +69,4 @@ public class ArticleFeedCacheKeys {
     public String dirtyArticleSetKey() {
         return cacheProperties.getDirtyArticleSetKey();
     }
-
-    public String interactionActiveKey() {
-        return cacheProperties.getInteractionActiveZsetKey();
-    }
 }

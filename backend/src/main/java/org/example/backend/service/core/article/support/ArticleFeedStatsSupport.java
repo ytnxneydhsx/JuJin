@@ -8,7 +8,6 @@ import org.example.backend.model.vo.ArticleSummaryVO;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -42,24 +41,31 @@ public class ArticleFeedStatsSupport {
         if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(hashKey))) {
             return;
         }
-        refreshStatsHash(article, false);
+        refreshStatsHash(article);
     }
 
-    public void refreshStatsHash(ArticleEntity article, boolean preserveHotStats) {
+    public void refreshStatsHash(ArticleEntity article) {
         String hashKey = articleFeedCacheKeys.statsHashKey(article.getId());
-        Map<Object, Object> existing = preserveHotStats
-                ? stringRedisTemplate.opsForHash().entries(hashKey)
-                : Collections.emptyMap();
-        stringRedisTemplate.opsForHash().putAll(
-                hashKey,
-                articleFeedStatsCodec.buildStatsFields(article, existing, preserveHotStats)
-        );
+        stringRedisTemplate.opsForHash().putAll(hashKey, articleFeedStatsCodec.buildStatsFields(article));
     }
 
     public long resolveCurrentViewCount(ArticleEntity article) {
         Map<Object, Object> values = stringRedisTemplate.opsForHash()
                 .entries(articleFeedCacheKeys.statsHashKey(article.getId()));
         return articleFeedStatsCodec.readLong(values, ArticleFeedStatsFields.VIEW_COUNT, article.getViewCount());
+    }
+
+    public boolean applyStatsIfPresent(ArticleSummaryVO summary) {
+        if (summary == null || summary.getArticleId() == null) {
+            return false;
+        }
+        Map<Object, Object> values = stringRedisTemplate.opsForHash()
+                .entries(articleFeedCacheKeys.statsHashKey(summary.getArticleId()));
+        if (values == null || values.isEmpty()) {
+            return false;
+        }
+        articleFeedStatsCodec.applyStats(summary, values);
+        return true;
     }
 
     public Long readLastTouchedAt(Long articleId) {
@@ -69,10 +75,8 @@ public class ArticleFeedStatsSupport {
     }
 
     public void touch(Long articleId, long touchedAt) {
-        String articleIdText = String.valueOf(articleId);
         String hashKey = articleFeedCacheKeys.statsHashKey(articleId);
         stringRedisTemplate.opsForHash().put(hashKey, ArticleFeedStatsFields.LAST_TOUCHED_AT, String.valueOf(touchedAt));
-        stringRedisTemplate.opsForZSet().add(articleFeedCacheKeys.interactionActiveKey(), articleIdText, touchedAt);
     }
 
     public boolean isExpired(Long touchedAt, long now) {
@@ -83,13 +87,11 @@ public class ArticleFeedStatsSupport {
     }
 
     public void evictInteractionCache(Long articleId) {
-        String articleIdText = String.valueOf(articleId);
         stringRedisTemplate.delete(articleFeedCacheKeys.statsHashKey(articleId));
         stringRedisTemplate.delete(articleFeedCacheKeys.likeUserSetKey(articleId));
         stringRedisTemplate.delete(articleFeedCacheKeys.favoriteUserSetKey(articleId));
         stringRedisTemplate.delete(articleFeedCacheKeys.likeInitKey(articleId));
         stringRedisTemplate.delete(articleFeedCacheKeys.favoriteInitKey(articleId));
-        stringRedisTemplate.opsForZSet().remove(articleFeedCacheKeys.interactionActiveKey(), articleIdText);
     }
 
     private void applyStats(ArticleSummaryVO summary) {

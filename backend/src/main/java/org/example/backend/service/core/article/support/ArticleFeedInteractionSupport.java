@@ -25,15 +25,12 @@ public class ArticleFeedInteractionSupport {
     private final ArticleLikeMapper articleLikeMapper;
     private final ArticleFavoriteMapper articleFavoriteMapper;
     private final ArticleFeedCacheKeys articleFeedCacheKeys;
-    private final ArticleFeedCardSupport articleFeedCardSupport;
     private final ArticleFeedStatsSupport articleFeedStatsSupport;
 
     private final DefaultRedisScript<List> toggleCounterScript = buildToggleCounterScript();
 
     public long recordView(ArticleEntity article) {
         articleFeedStatsSupport.ensureStatsHash(article);
-        articleFeedCardSupport.ensureCardHash(article);
-        articleFeedCardSupport.promoteToFeeds(article, articleFeedStatsSupport.resolveCurrentViewCount(article));
 
         String articleIdText = String.valueOf(article.getId());
         String hashKey = articleFeedCacheKeys.statsHashKey(article.getId());
@@ -41,7 +38,6 @@ public class ArticleFeedInteractionSupport {
                 .increment(hashKey, ArticleFeedStatsFields.VIEW_COUNT, 1L);
         long now = System.currentTimeMillis();
         articleFeedStatsSupport.touch(article.getId(), now);
-        stringRedisTemplate.opsForZSet().incrementScore(articleFeedCacheKeys.rankingKey(), articleIdText, 1D);
         stringRedisTemplate.opsForSet().add(articleFeedCacheKeys.dirtyArticleSetKey(), articleIdText);
         return latestViewCount == null ? 0L : Math.max(0L, latestViewCount);
     }
@@ -106,6 +102,20 @@ public class ArticleFeedInteractionSupport {
         return Boolean.TRUE.equals(
                 stringRedisTemplate.opsForSet().isMember(articleFeedCacheKeys.favoriteUserSetKey(articleId), String.valueOf(userId))
         );
+    }
+
+    public boolean isLikeRelationInitialized(Long articleId) {
+        if (articleId == null || articleId <= 0) {
+            return false;
+        }
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(articleFeedCacheKeys.likeInitKey(articleId)));
+    }
+
+    public boolean isFavoriteRelationInitialized(Long articleId) {
+        if (articleId == null || articleId <= 0) {
+            return false;
+        }
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(articleFeedCacheKeys.favoriteInitKey(articleId)));
     }
 
     private void initializeLikeSetIfNeeded(Long articleId) {
@@ -184,8 +194,7 @@ public class ArticleFeedInteractionSupport {
                 List.of(
                         relationSetKey,
                         hashKey,
-                        articleFeedCacheKeys.dirtyArticleSetKey(),
-                        articleFeedCacheKeys.interactionActiveKey()
+                        articleFeedCacheKeys.dirtyArticleSetKey()
                 ),
                 userIdText,
                 articleIdText,
@@ -236,7 +245,6 @@ public class ArticleFeedInteractionSupport {
                 local relationSetKey = KEYS[1]
                 local hashKey = KEYS[2]
                 local dirtySetKey = KEYS[3]
-                local activeKey = KEYS[4]
                 local userId = ARGV[1]
                 local articleId = ARGV[2]
                 local countField = ARGV[3]
@@ -261,7 +269,6 @@ public class ArticleFeedInteractionSupport {
                 redis.call('HSET', hashKey, countField, tostring(count))
                 redis.call('HSET', hashKey, 'lastTouchedAt', nowMillis)
                 redis.call('SADD', dirtySetKey, articleId)
-                redis.call('ZADD', activeKey, nowMillis, articleId)
                 return {active, count}
                 """);
         return script;

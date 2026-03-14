@@ -18,7 +18,6 @@ public class AppArticleFeedCacheProperties {
     private String likeInitKeyPrefix = "article:feed:like:init:";
     private String favoriteInitKeyPrefix = "article:feed:favorite:init:";
     private String dirtyArticleSetKey = "article:feed:dirty";
-    private String interactionActiveZsetKey = "article:interaction:active";
     private int maxItems = 500;
     private long rebuildIntervalMs = 300000;
     private long interactionRetentionMs = 86400000;
