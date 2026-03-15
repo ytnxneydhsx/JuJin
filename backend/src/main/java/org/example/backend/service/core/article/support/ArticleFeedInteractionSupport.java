@@ -2,18 +2,21 @@ package org.example.backend.service.core.article.support;
 
 import lombok.RequiredArgsConstructor;
 import org.example.backend.common.constant.AppConstants.RelationStatus;
+import org.example.backend.config.AppArticleFeedCacheProperties;
 import org.example.backend.mapper.interaction.ArticleFavoriteMapper;
 import org.example.backend.mapper.interaction.ArticleLikeMapper;
 import org.example.backend.model.entity.ArticleEntity;
 import org.example.backend.model.vo.ArticleFavoriteVO;
 import org.example.backend.model.vo.ArticleLikeVO;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -21,6 +24,7 @@ public class ArticleFeedInteractionSupport {
 
     private static final long INIT_LOCK_SECONDS = 5L;
 
+    private final AppArticleFeedCacheProperties cacheProperties;
     private final StringRedisTemplate stringRedisTemplate;
     private final ArticleLikeMapper articleLikeMapper;
     private final ArticleFavoriteMapper articleFavoriteMapper;
@@ -39,7 +43,9 @@ public class ArticleFeedInteractionSupport {
         long now = System.currentTimeMillis();
         articleFeedStatsSupport.touch(article.getId(), now);
         stringRedisTemplate.opsForSet().add(articleFeedCacheKeys.dirtyArticleSetKey(), articleIdText);
-        return latestViewCount == null ? 0L : Math.max(0L, latestViewCount);
+        long currentViewCount = latestViewCount == null ? 0L : Math.max(0L, latestViewCount);
+        refreshRankingFeedAfterView(article.getId(), currentViewCount);
+        return currentViewCount;
     }
 
     public ArticleLikeVO toggleLike(Long userId, ArticleEntity article) {
@@ -216,6 +222,51 @@ public class ArticleFeedInteractionSupport {
                 return;
             }
         }
+    }
+
+    private void refreshRankingFeedAfterView(Long articleId, long currentViewCount) {
+        if (articleId == null || articleId <= 0) {
+            return;
+        }
+        String rankingKey = articleFeedCacheKeys.rankingKey();
+        String articleIdText = String.valueOf(articleId);
+        double score = currentViewCount;
+
+        if (stringRedisTemplate.opsForZSet().score(rankingKey, articleIdText) != null) {
+            stringRedisTemplate.opsForZSet().add(rankingKey, articleIdText, score);
+            trimRankingFeedIfNeeded(rankingKey);
+            return;
+        }
+
+        Long size = stringRedisTemplate.opsForZSet().zCard(rankingKey);
+        if (size == null || size < cacheProperties.getMaxItems()) {
+            stringRedisTemplate.opsForZSet().add(rankingKey, articleIdText, score);
+            trimRankingFeedIfNeeded(rankingKey);
+            return;
+        }
+
+        Set<ZSetOperations.TypedTuple<String>> tail = stringRedisTemplate.opsForZSet()
+                .reverseRangeWithScores(rankingKey, cacheProperties.getMaxItems() - 1L, cacheProperties.getMaxItems() - 1L);
+        if (tail == null || tail.isEmpty()) {
+            stringRedisTemplate.opsForZSet().add(rankingKey, articleIdText, score);
+            trimRankingFeedIfNeeded(rankingKey);
+            return;
+        }
+
+        ZSetOperations.TypedTuple<String> threshold = tail.iterator().next();
+        if (threshold.getScore() == null || score >= threshold.getScore()) {
+            stringRedisTemplate.opsForZSet().add(rankingKey, articleIdText, score);
+            trimRankingFeedIfNeeded(rankingKey);
+        }
+    }
+
+    private void trimRankingFeedIfNeeded(String rankingKey) {
+        Long size = stringRedisTemplate.opsForZSet().zCard(rankingKey);
+        if (size == null || size <= cacheProperties.getMaxItems()) {
+            return;
+        }
+        long overflow = size - cacheProperties.getMaxItems();
+        stringRedisTemplate.opsForZSet().removeRange(rankingKey, 0, overflow - 1);
     }
 
     private long asLong(List<?> values, int index) {
