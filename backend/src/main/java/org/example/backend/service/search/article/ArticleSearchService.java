@@ -6,8 +6,4 @@ import org.springframework.data.domain.Page;
 public interface ArticleSearchService {
 
     Page<ArticleSearchVO> search(String keyword, Long userId, int page, int size);
-
-    long rebuildIndex();
-
-    void syncByArticleId(Long articleId);
 }

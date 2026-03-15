@@ -1,5 +1,6 @@
 package org.example.backend.model.es;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,12 +10,11 @@ import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
-import java.time.LocalDateTime;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Document(indexName = "article_search")
 public class ArticleSearchDocument {
 
@@ -35,10 +35,4 @@ public class ArticleSearchDocument {
 
     @Field(type = FieldType.Integer, index = false)
     private Integer status;
-
-    @Field(type = FieldType.Date, index = false)
-    private LocalDateTime publishedAt;
-
-    @Field(type = FieldType.Date, index = false)
-    private LocalDateTime updatedAt;
 }
