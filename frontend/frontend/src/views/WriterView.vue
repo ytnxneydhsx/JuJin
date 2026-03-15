@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import { createDraft, getDraft, publishDraft, updateDraft, type SaveDraftPayload } from '@/api/draft'
 import { uploadImage } from '@/api/upload'
-import { renderMarkdownToSafeHtml } from '@/utils/markdown'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,7 +55,7 @@ async function loadDraft(draftId: number) {
     form.coverUrl = draft.coverUrl || ''
     form.content = draft.content || ''
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to load draft'
+    errorText.value = error instanceof Error ? error.message : '加载草稿失败'
   } finally {
     loadingDraft.value = false
   }
@@ -91,17 +91,15 @@ async function save() {
       currentDraftId.value = data.draftId
       await router.replace({
         path: '/write',
-        query: {
-          draftId: String(data.draftId),
-        },
+        query: { draftId: String(data.draftId) },
       })
-      successText.value = `Draft #${data.draftId} created`
+      successText.value = `草稿 #${data.draftId} 已创建`
       return
     }
     await updateDraft(currentDraftId.value, payload)
-    successText.value = `Draft #${currentDraftId.value} saved`
+    successText.value = `草稿 #${currentDraftId.value} 已保存`
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to save draft'
+    errorText.value = error instanceof Error ? error.message : '保存草稿失败'
   } finally {
     savingDraft.value = false
   }
@@ -122,7 +120,7 @@ async function publish() {
     const data = await publishDraft(currentDraftId.value)
     await router.push(`/article/${data.articleId}`)
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to publish draft'
+    errorText.value = error instanceof Error ? error.message : '发布失败'
   } finally {
     publishing.value = false
   }
@@ -140,9 +138,9 @@ async function handleCoverFileChange(event: Event) {
   try {
     const uploaded = await uploadImage('article_cover', file)
     form.coverUrl = uploaded.url
-    successText.value = 'Cover uploaded'
+    successText.value = '封面上传成功'
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to upload cover'
+    errorText.value = error instanceof Error ? error.message : '封面上传失败'
   } finally {
     uploadingCover.value = false
     input.value = ''
@@ -160,281 +158,105 @@ async function handleContentImageFileChange(event: Event) {
   successText.value = ''
   try {
     const uploaded = await uploadImage('article_content', file)
-    const markdownImage = `\n![image](${uploaded.url})\n`
-    form.content += markdownImage
-    successText.value = 'Image uploaded and inserted into markdown'
+    form.content += `\n![image](${uploaded.url})\n`
+    successText.value = '图片已插入正文'
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to upload content image'
+    errorText.value = error instanceof Error ? error.message : '正文图片上传失败'
   } finally {
     uploadingContentImage.value = false
     input.value = ''
   }
 }
-
-const renderHtml = computed(() => {
-  return renderMarkdownToSafeHtml(form.content || '')
-})
 </script>
 
 <template>
   <section class="writer-layout">
-    <header class="writer-head">
-      <div>
-        <h1>Write Article</h1>
-        <p>Draft first, publish after preview. Markdown is supported.</p>
-      </div>
-      <div class="head-actions">
-        <button class="ghost-btn" @click="router.push('/drafts')">Draft Box</button>
-        <button class="main-btn" :disabled="savingDraft || loadingDraft" @click="save">
-          {{ savingDraft ? 'Saving...' : currentDraftId ? `Save #${currentDraftId}` : 'Save Draft' }}
-        </button>
-        <button class="accent-btn" :disabled="publishing || loadingDraft" @click="publish">
-          {{ publishing ? 'Publishing...' : 'Publish' }}
-        </button>
-      </div>
-    </header>
-
     <p v-if="errorText" class="error-text">{{ errorText }}</p>
     <p v-if="successText" class="success-text">{{ successText }}</p>
 
-    <div v-if="loadingDraft" class="panel">Loading draft...</div>
-    <div v-else class="writer-grid">
-      <form class="editor-form" @submit.prevent>
-        <label class="field">
-          <span>Title</span>
-          <input v-model.trim="form.title" maxlength="200" placeholder="Input article title" />
-        </label>
+    <header class="writer-head">
+      <div class="writer-head-main">
+        <input v-model.trim="form.title" class="title-input" maxlength="200" placeholder="输入文章标题..." />
+        <div class="head-meta">
+          <span>{{ currentDraftId ? `草稿 #${currentDraftId}` : '未保存草稿' }}</span>
+          <span>支持 Markdown、公式和 Mermaid</span>
+        </div>
+      </div>
+      <div class="head-actions">
+        <button class="ghost-btn" @click="router.push('/drafts')">草稿箱</button>
+        <button class="ghost-btn" :disabled="savingDraft || loadingDraft" @click="save">{{ savingDraft ? '保存中...' : '保存草稿' }}</button>
+        <button class="primary-btn" :disabled="publishing || loadingDraft" @click="publish">{{ publishing ? '发布中...' : '发布' }}</button>
+      </div>
+    </header>
 
-        <label class="field">
-          <span>Summary</span>
-          <textarea
-            v-model.trim="form.summary"
-            maxlength="500"
-            rows="3"
-            placeholder="Input summary, max 500 chars"
-          />
-        </label>
+    <div v-if="loadingDraft" class="panel">正在加载草稿...</div>
+    <div v-else class="editor-shell">
+      <section class="editor-panel">
+        <div class="editor-toolbar">
+          <label class="toolbar-field">
+            <span>摘要</span>
+            <textarea v-model.trim="form.summary" maxlength="500" rows="3" placeholder="一句话概括文章内容" />
+          </label>
 
-        <label class="field">
-          <span>Cover URL</span>
-          <input v-model.trim="form.coverUrl" maxlength="512" placeholder="https://..." />
-          <div class="upload-row">
-            <input
-              type="file"
-              accept="image/*"
-              :disabled="uploadingCover"
-              @change="handleCoverFileChange"
-            />
-            <span>{{ uploadingCover ? 'Uploading cover...' : 'Upload cover image' }}</span>
-          </div>
-        </label>
+          <label class="toolbar-field">
+            <span>封面</span>
+            <input v-model.trim="form.coverUrl" maxlength="512" placeholder="粘贴封面地址，或使用下方上传" />
+            <input type="file" accept="image/*" :disabled="uploadingCover" @change="handleCoverFileChange" />
+          </label>
+        </div>
 
-        <label class="field">
-          <span>Content (Markdown)</span>
-          <textarea
-            v-model="form.content"
-            rows="16"
-            placeholder="# Start writing..."
-          />
-          <div class="upload-row">
-            <input
-              type="file"
-              accept="image/*"
-              :disabled="uploadingContentImage"
-              @change="handleContentImageFileChange"
-            />
-            <span>{{ uploadingContentImage ? 'Uploading image...' : 'Upload image into content' }}</span>
-          </div>
-        </label>
-      </form>
+        <div class="editor-body">
+          <textarea v-model="form.content" class="editor-textarea" placeholder="# 开始写作..." />
+        </div>
+
+        <div class="upload-row">
+          <input type="file" accept="image/*" :disabled="uploadingContentImage" @change="handleContentImageFileChange" />
+          <span>{{ uploadingContentImage ? '正在上传正文图片...' : '上传图片到正文' }}</span>
+        </div>
+      </section>
 
       <section class="preview-panel">
-        <h2>Preview</h2>
+        <div class="preview-head">
+          <p class="section-label">预览</p>
+          <h2>{{ form.title || '未命名文章' }}</h2>
+          <p>{{ form.summary || '这里会显示摘要预览。' }}</p>
+        </div>
         <img v-if="form.coverUrl" class="cover-preview" :src="form.coverUrl" alt="cover preview" />
-        <h3>{{ form.title || 'Untitled article' }}</h3>
-        <p class="preview-summary">{{ form.summary || 'No summary yet.' }}</p>
-        <div class="md-preview" v-html="renderHtml" />
+        <MarkdownRenderer class="md-preview" :source="form.content" />
       </section>
     </div>
   </section>
 </template>
 
 <style scoped>
-.writer-layout {
-  display: grid;
-  gap: 12px;
-}
-
-.writer-head {
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(128deg, #ffffff, #f4f8fd);
-  padding: 20px 22px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.writer-head h1 {
-  margin: 0;
-  color: var(--ink-strong);
-}
-
-.writer-head p {
-  margin: 6px 0 0;
-  color: var(--ink-muted);
-}
-
-.head-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.ghost-btn,
-.main-btn,
-.accent-btn {
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 8px 14px;
-  background: #fff;
-  color: var(--ink-main);
-  cursor: pointer;
-}
-
-.main-btn {
-  border-color: rgba(20, 88, 166, 0.5);
-  color: var(--brand);
-}
-
-.accent-btn {
-  border-color: transparent;
-  background: linear-gradient(140deg, #1458a6, #1d77d2);
-  color: #fff;
-}
-
-.ghost-btn:disabled,
-.main-btn:disabled,
-.accent-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.error-text {
-  margin: 0;
-  color: var(--danger);
-}
-
-.success-text {
-  margin: 0;
-  color: var(--ok);
-}
-
-.panel {
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-md);
-  background: #fff;
-  padding: 16px;
-}
-
-.writer-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.editor-form,
-.preview-panel {
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-md);
-  background: #fff;
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-}
-
-.preview-panel h2 {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--ink-muted);
-}
-
-.preview-panel h3 {
-  margin: 0;
-  color: var(--ink-strong);
-}
-
-.preview-summary {
-  margin: 0;
-  color: var(--ink-muted);
-}
-
-.field {
-  display: grid;
-  gap: 6px;
-}
-
-.field span {
-  font-weight: 600;
-  color: var(--ink-main);
-}
-
-.field input,
-.field textarea {
-  width: 100%;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--ink-strong);
-  padding: 10px 12px;
-  resize: vertical;
-}
-
-.field input:focus,
-.field textarea:focus {
-  outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(20, 88, 166, 0.14);
-}
-
-.upload-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink-muted);
-  font-size: 0.86rem;
-}
-
-.cover-preview {
-  width: 100%;
-  max-height: 240px;
-  border-radius: 10px;
-  object-fit: cover;
-  border: 1px solid var(--line-soft);
-}
-
-.md-preview {
-  color: var(--ink-main);
-  line-height: 1.7;
-  word-break: break-word;
-}
-
-.md-preview :deep(pre) {
-  background: #121821;
-  color: #f4f8ff;
-  border-radius: 10px;
-  padding: 12px;
-  overflow: auto;
-}
-
-.md-preview :deep(code) {
-  font-family: "Consolas", "JetBrains Mono", monospace;
-}
-
-@media (max-width: 980px) {
-  .writer-grid {
-    grid-template-columns: 1fr;
-  }
-}
+.writer-layout { display: grid; gap: 16px; }
+.writer-head, .panel, .editor-panel, .preview-panel { border: 1px solid var(--line-soft); border-radius: 18px; background: #fff; }
+.writer-head { padding: 18px 22px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.writer-head-main { flex: 1; min-width: 0; }
+.title-input { width: 100%; border: none; background: transparent; color: var(--ink-strong); font-size: clamp(1.4rem, 1.2rem + 0.9vw, 2rem); font-weight: 700; padding: 0; }
+.title-input:focus { outline: none; }
+.head-meta { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px; color: var(--ink-muted); font-size: 0.88rem; }
+.head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.ghost-btn, .primary-btn { border: none; border-radius: 12px; padding: 10px 14px; cursor: pointer; font: inherit; }
+.ghost-btn { background: #f4f7fb; color: var(--ink-main); }
+.primary-btn { background: linear-gradient(135deg, #1e80ff, #5ea1ff); color: #fff; }
+.editor-shell { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.editor-panel, .preview-panel { padding: 18px; display: grid; gap: 16px; align-content: start; }
+.editor-toolbar { display: grid; gap: 16px; }
+.toolbar-field, .upload-row { display: grid; gap: 8px; }
+.toolbar-field span, .section-label { color: var(--brand); font-size: 0.85rem; font-weight: 700; }
+.toolbar-field input, .toolbar-field textarea, .editor-textarea { border: 1px solid var(--line-soft); border-radius: 12px; background: #f7f8fa; padding: 12px 14px; color: var(--ink-strong); }
+.toolbar-field textarea, .editor-textarea { resize: vertical; }
+.editor-body { min-height: 520px; }
+.editor-textarea { width: 100%; min-height: 520px; height: 100%; font-family: "JetBrains Mono", "Consolas", monospace; line-height: 1.8; }
+.preview-head h2 { margin: 8px 0 0; color: var(--ink-strong); }
+.preview-head p:last-child { margin: 10px 0 0; color: var(--ink-muted); }
+.cover-preview { width: 100%; max-height: 260px; border-radius: 16px; object-fit: cover; }
+.md-preview { color: var(--ink-main); line-height: 1.9; }
+.error-text, .success-text { margin: 0; }
+.error-text { color: var(--danger); }
+.success-text { color: var(--ok); }
+.panel { padding: 18px; }
+@media (max-width: 1040px) { .editor-shell { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .writer-head { flex-direction: column; align-items: stretch; } }
 </style>

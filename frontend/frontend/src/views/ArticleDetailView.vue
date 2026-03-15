@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CommentTreeNode from '@/components/comment/CommentTreeNode.vue'
+import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import { getArticle, toggleFavoriteArticle, toggleLikeArticle } from '@/api/article'
 import {
   createComment,
@@ -10,10 +11,10 @@ import {
   listRootComments,
   toggleCommentLike,
 } from '@/api/comment'
+import { getUserProfile } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
-import type { ArticleCommentVO, ArticleDetailVO } from '@/types/models'
+import type { ArticleCommentVO, ArticleDetailVO, UserPublicProfileVO } from '@/types/models'
 import { formatDateTime } from '@/utils/date'
-import { renderMarkdownToSafeHtml } from '@/utils/markdown'
 
 interface CommentChildState {
   open: boolean
@@ -32,6 +33,12 @@ interface RootReplyState {
   errorText: string
 }
 
+interface OutlineItem {
+  id: string
+  text: string
+  level: number
+}
+
 const COMMENT_CHILD_PAGE_SIZE = 5
 
 const route = useRoute()
@@ -39,6 +46,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const article = ref<ArticleDetailVO | null>(null)
+const authorProfile = ref<UserPublicProfileVO | null>(null)
 const loadingArticle = ref(false)
 const loadingRootComments = ref(false)
 const interactionLoading = ref(false)
@@ -51,6 +59,9 @@ const rootSize = ref(10)
 const rootTotal = ref(0)
 const commentStateMap = reactive<Record<number, CommentChildState>>({})
 const rootReplyMap = reactive<Record<number, RootReplyState>>({})
+const outlineItems = ref<OutlineItem[]>([])
+const articleBodyRef = ref<HTMLElement | null>(null)
+const commentPanelRef = ref<HTMLElement | null>(null)
 
 const articleId = computed(() => {
   const parsed = Number(route.params.articleId)
@@ -60,8 +71,9 @@ const articleId = computed(() => {
   return parsed
 })
 
-const renderHtml = computed(() => {
-  return renderMarkdownToSafeHtml(article.value?.content || '')
+const authorAvatarLabel = computed(() => {
+  const source = authorProfile.value?.name || String(article.value?.userId || '')
+  return source.slice(0, 1).toUpperCase() || 'A'
 })
 
 function ensureThreadState(rootId: number) {
@@ -216,18 +228,33 @@ function requireLoginOrRedirect() {
 
 async function loadArticle() {
   if (articleId.value === null) {
-    errorText.value = 'Invalid article id'
+    errorText.value = '无效的文章编号'
     return
   }
   loadingArticle.value = true
   errorText.value = ''
   try {
     article.value = await getArticle(articleId.value)
+    await loadAuthorProfile()
   } catch (error) {
     article.value = null
-    errorText.value = error instanceof Error ? error.message : 'Failed to load article'
+    authorProfile.value = null
+    errorText.value = error instanceof Error ? error.message : '加载文章失败'
   } finally {
     loadingArticle.value = false
+  }
+}
+
+async function loadAuthorProfile() {
+  if (!article.value) {
+    authorProfile.value = null
+    return
+  }
+
+  try {
+    authorProfile.value = await getUserProfile(article.value.userId)
+  } catch {
+    authorProfile.value = null
   }
 }
 
@@ -249,7 +276,7 @@ async function loadRootCommentPage() {
     rootComments.value = []
     rootTotal.value = 0
     resetCommentStateMaps()
-    commentErrorText.value = error instanceof Error ? error.message : 'Failed to load comments'
+    commentErrorText.value = error instanceof Error ? error.message : '加载评论失败'
   } finally {
     loadingRootComments.value = false
   }
@@ -270,7 +297,7 @@ async function handleToggleLikeArticle() {
     article.value.liked = result.liked
     article.value.likeCount = result.likeCount
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to toggle like'
+    errorText.value = error instanceof Error ? error.message : '点赞失败'
   } finally {
     interactionLoading.value = false
   }
@@ -287,7 +314,7 @@ async function handleToggleFavoriteArticle() {
     article.value.favorited = result.favorited
     article.value.favoriteCount = result.favoriteCount
   } catch (error) {
-    errorText.value = error instanceof Error ? error.message : 'Failed to toggle favorite'
+    errorText.value = error instanceof Error ? error.message : '收藏失败'
   } finally {
     interactionLoading.value = false
   }
@@ -299,7 +326,7 @@ async function submitRootComment() {
   }
   const content = rootCommentContent.value.trim()
   if (!content) {
-    commentErrorText.value = 'Comment cannot be empty'
+    commentErrorText.value = '评论内容不能为空'
     return
   }
   commentErrorText.value = ''
@@ -312,7 +339,7 @@ async function submitRootComment() {
     rootPage.value = 0
     await loadRootCommentPage()
   } catch (error) {
-    commentErrorText.value = error instanceof Error ? error.message : 'Failed to create comment'
+    commentErrorText.value = error instanceof Error ? error.message : '发表评论失败'
   }
 }
 
@@ -350,7 +377,7 @@ async function loadChildPage(comment: ArticleCommentVO, append = false) {
     state.total = data.total
     state.hasNext = data.hasNext
   } catch (error) {
-    state.errorText = error instanceof Error ? error.message : 'Failed to load replies'
+    state.errorText = error instanceof Error ? error.message : '加载回复失败'
   } finally {
     state.loading = false
   }
@@ -391,11 +418,11 @@ async function submitReply(root: ArticleCommentVO) {
   const state = ensureRootReplyState(root.commentId)
   const content = state.content.trim()
   if (!content) {
-    state.errorText = 'Reply cannot be empty'
+    state.errorText = '回复内容不能为空'
     return
   }
   if (state.parentId === null) {
-    state.errorText = 'Reply target is required'
+    state.errorText = '请选择要回复的评论'
     return
   }
   state.errorText = ''
@@ -419,7 +446,7 @@ async function submitReply(root: ArticleCommentVO) {
       await loadRootCommentPage()
     }
   } catch (error) {
-    state.errorText = error instanceof Error ? error.message : 'Failed to create reply'
+    state.errorText = error instanceof Error ? error.message : '回复失败'
   }
 }
 
@@ -438,7 +465,7 @@ async function handleToggleCommentLike(commentId: number) {
     const data = await toggleCommentLike(commentId)
     patchCommentLiked(commentId, data.liked)
   } catch (error) {
-    commentErrorText.value = error instanceof Error ? error.message : 'Failed to toggle comment like'
+    commentErrorText.value = error instanceof Error ? error.message : '评论点赞失败'
   }
 }
 
@@ -446,7 +473,7 @@ async function handleDeleteComment(comment: ArticleCommentVO) {
   if (!requireLoginOrRedirect()) {
     return
   }
-  const confirmed = window.confirm(`Delete comment #${comment.commentId}?`)
+  const confirmed = window.confirm(`删除评论 #${comment.commentId}？`)
   if (!confirmed) {
     return
   }
@@ -467,8 +494,63 @@ async function handleDeleteComment(comment: ArticleCommentVO) {
     }
     await loadRootCommentPage()
   } catch (error) {
-    commentErrorText.value = error instanceof Error ? error.message : 'Failed to delete comment'
+    commentErrorText.value = error instanceof Error ? error.message : '删除评论失败'
   }
+}
+
+function scrollToComments() {
+  commentPanelRef.value?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+}
+
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth',
+  })
+}
+
+function slugifyHeading(text: string) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
+
+async function rebuildOutline() {
+  await nextTick()
+  const body = articleBodyRef.value
+  if (!body) {
+    outlineItems.value = []
+    return
+  }
+
+  const headingElements = Array.from(body.querySelectorAll('h1, h2, h3'))
+  const duplicateCounter = new Map<string, number>()
+  outlineItems.value = headingElements.map((element) => {
+    const text = element.textContent?.trim() || '章节'
+    const baseId = slugifyHeading(text) || 'section'
+    const duplicate = duplicateCounter.get(baseId) ?? 0
+    duplicateCounter.set(baseId, duplicate + 1)
+    const id = duplicate === 0 ? baseId : `${baseId}-${duplicate}`
+    element.id = id
+    return {
+      id,
+      text,
+      level: Number(element.tagName.replace('H', '')),
+    }
+  })
+}
+
+function scrollToOutline(item: OutlineItem) {
+  document.getElementById(item.id)?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
 }
 
 watch(
@@ -476,7 +558,9 @@ watch(
   async () => {
     rootPage.value = 0
     resetCommentStateMaps()
+    outlineItems.value = []
     await refreshAll()
+    await rebuildOutline()
   },
   {
     immediate: true,
@@ -484,105 +568,194 @@ watch(
 )
 
 watch(rootPage, loadRootCommentPage)
+watch(
+  () => article.value?.content,
+  () => {
+    void rebuildOutline()
+  },
+)
 </script>
 
 <template>
   <section class="detail-layout">
     <p v-if="errorText" class="error-text">{{ errorText }}</p>
 
-    <article v-if="article" class="article-card">
-      <img v-if="article.coverUrl" class="cover" :src="article.coverUrl" alt="cover" />
-      <header class="article-head">
-        <h1>{{ article.title }}</h1>
-        <p>{{ article.summary || 'No summary.' }}</p>
-        <div class="meta">
-          <span>Author {{ article.userId }}</span>
-          <span>Published {{ formatDateTime(article.publishedAt) }}</span>
-          <span>Views {{ article.viewCount || 0 }}</span>
-        </div>
-        <div class="interactions">
-          <button :disabled="interactionLoading" :class="{ active: article.liked }" @click="handleToggleLikeArticle">
-            {{ article.liked ? 'Liked' : 'Like' }} ({{ article.likeCount || 0 }})
-          </button>
-          <button
-            :disabled="interactionLoading"
-            :class="{ active: article.favorited }"
-            @click="handleToggleFavoriteArticle"
-          >
-            {{ article.favorited ? 'Favorited' : 'Favorite' }} ({{ article.favoriteCount || 0 }})
-          </button>
-        </div>
-      </header>
-      <div class="md-body" v-html="renderHtml" />
-    </article>
-    <div v-else-if="loadingArticle" class="panel">Loading article...</div>
+    <div class="detail-grid">
+      <aside v-if="article" class="action-rail">
+        <button
+          class="rail-btn"
+          :class="{ active: article.liked }"
+          :disabled="interactionLoading"
+          @click="handleToggleLikeArticle"
+        >
+          <strong>{{ article.likeCount || 0 }}</strong>
+          <span>{{ article.liked ? '已赞' : '点赞' }}</span>
+        </button>
+        <button class="rail-btn" @click="scrollToComments">
+          <strong>{{ rootTotal }}</strong>
+          <span>评论</span>
+        </button>
+        <button
+          class="rail-btn"
+          :class="{ active: article.favorited }"
+          :disabled="interactionLoading"
+          @click="handleToggleFavoriteArticle"
+        >
+          <strong>{{ article.favoriteCount || 0 }}</strong>
+          <span>{{ article.favorited ? '已藏' : '收藏' }}</span>
+        </button>
+        <button class="rail-btn" @click="scrollToTop">
+          <strong>{{ article.viewCount || 0 }}</strong>
+          <span>阅读</span>
+        </button>
+      </aside>
 
-    <section class="comment-panel">
-      <header class="comment-head">
-        <h2>Comments</h2>
-        <span>Total {{ rootTotal }}</span>
-      </header>
+      <main class="article-main">
+        <article v-if="article" class="article-card">
+          <img v-if="article.coverUrl" class="cover" :src="article.coverUrl" alt="cover" />
+          <header class="article-head">
+            <div class="article-meta-line">
+              <button class="author-jump" @click="router.push({ path: '/', query: { userId: String(article.userId) } })">
+                作者 {{ article.userId }}
+              </button>
+              <span>{{ formatDateTime(article.publishedAt) }}</span>
+              <span>{{ article.viewCount || 0 }} 次阅读</span>
+            </div>
+            <h1>{{ article.title }}</h1>
+            <p class="summary">{{ article.summary || '作者没有填写文章摘要。' }}</p>
+          </header>
+          <div ref="articleBodyRef" class="article-body-shell">
+            <MarkdownRenderer class="md-body" :source="article.content" />
+          </div>
+        </article>
+        <div v-else-if="loadingArticle" class="panel">正在加载文章...</div>
 
-      <form class="comment-form" @submit.prevent="submitRootComment">
-        <textarea
-          v-model="rootCommentContent"
-          rows="3"
-          maxlength="3000"
-          placeholder="Write your comment"
-        />
-        <button type="submit">Post Comment</button>
-      </form>
+        <section ref="commentPanelRef" class="comment-panel">
+          <header class="comment-head">
+            <div>
+              <h2>评论 {{ rootTotal }}</h2>
+              <p>支持楼层回复与评论点赞</p>
+            </div>
+          </header>
 
-      <p v-if="commentErrorText" class="error-text">{{ commentErrorText }}</p>
-      <div v-if="loadingRootComments" class="panel">Loading comments...</div>
-      <div v-else-if="rootComments.length === 0" class="panel">No comments yet.</div>
-      <div v-else class="comment-list">
-        <article v-for="root in rootComments" :key="root.commentId" class="comment-thread">
-          <CommentTreeNode
-            :comment="root"
-            :auth-user-id="authStore.state.userId"
-            :comment-states="commentStateMap"
-            @toggle-like="handleToggleCommentLike"
-            @prepare-reply="prepareReply"
-            @delete-comment="handleDeleteComment"
-            @toggle-children="toggleChildren"
-            @load-more-children="loadMoreChildren"
-          />
-
-          <form
-            v-if="shouldShowReplyComposer(root.commentId)"
-            class="reply-form root-reply-form"
-            @submit.prevent="submitReply(root)"
-          >
-            <p v-if="ensureRootReplyState(root.commentId).errorText" class="error-text">
-              {{ ensureRootReplyState(root.commentId).errorText }}
-            </p>
+          <form class="comment-form" @submit.prevent="submitRootComment">
             <textarea
-              v-model="ensureRootReplyState(root.commentId).content"
-              rows="2"
+              v-model="rootCommentContent"
+              rows="4"
               maxlength="3000"
-              :placeholder="
-                ensureRootReplyState(root.commentId).parentId
-                  ? `Reply to #${ensureRootReplyState(root.commentId).parentId}`
-                  : 'Select a comment first'
-              "
+              placeholder="平等表达，友善交流"
             />
-            <div class="reply-form-actions">
-              <button type="submit">Reply</button>
-              <button type="button" class="secondary" @click="clearReplyComposer(root.commentId)">Cancel</button>
+            <div class="comment-form-foot">
+              <span>{{ rootCommentContent.length }}/3000</span>
+              <button type="submit">发表评论</button>
             </div>
           </form>
-        </article>
-      </div>
 
-      <footer class="pager">
-        <button :disabled="rootPage <= 0 || loadingRootComments" @click="rootPage -= 1">Previous</button>
-        <span>Page {{ rootPage + 1 }} / {{ Math.max(1, Math.ceil(rootTotal / rootSize)) }}</span>
-        <button :disabled="loadingRootComments || (rootPage + 1) * rootSize >= rootTotal" @click="rootPage += 1">
-          Next
-        </button>
-      </footer>
-    </section>
+          <p v-if="commentErrorText" class="error-text">{{ commentErrorText }}</p>
+          <div v-if="loadingRootComments" class="panel panel-muted">正在加载评论...</div>
+          <div v-else-if="rootComments.length === 0" class="panel panel-muted">还没有评论，来抢沙发吧。</div>
+          <div v-else class="comment-list">
+            <article v-for="root in rootComments" :key="root.commentId" class="comment-thread">
+              <CommentTreeNode
+                :comment="root"
+                :auth-user-id="authStore.state.userId"
+                :comment-states="commentStateMap"
+                @toggle-like="handleToggleCommentLike"
+                @prepare-reply="prepareReply"
+                @delete-comment="handleDeleteComment"
+                @toggle-children="toggleChildren"
+                @load-more-children="loadMoreChildren"
+              />
+
+              <form
+                v-if="shouldShowReplyComposer(root.commentId)"
+                class="reply-form root-reply-form"
+                @submit.prevent="submitReply(root)"
+              >
+                <p v-if="ensureRootReplyState(root.commentId).errorText" class="error-text">
+                  {{ ensureRootReplyState(root.commentId).errorText }}
+                </p>
+                <textarea
+                  v-model="ensureRootReplyState(root.commentId).content"
+                  rows="3"
+                  maxlength="3000"
+                  :placeholder="
+                    ensureRootReplyState(root.commentId).parentId
+                      ? `回复 #${ensureRootReplyState(root.commentId).parentId}`
+                      : '选择一条评论开始回复'
+                  "
+                />
+                <div class="reply-form-actions">
+                  <button type="submit">回复</button>
+                  <button type="button" class="secondary" @click="clearReplyComposer(root.commentId)">取消</button>
+                </div>
+              </form>
+            </article>
+          </div>
+
+          <footer class="pager">
+            <button :disabled="rootPage <= 0 || loadingRootComments" @click="rootPage -= 1">上一页</button>
+            <span>第 {{ rootPage + 1 }} / {{ Math.max(1, Math.ceil(rootTotal / rootSize)) }} 页</span>
+            <button :disabled="loadingRootComments || (rootPage + 1) * rootSize >= rootTotal" @click="rootPage += 1">
+              下一页
+            </button>
+          </footer>
+        </section>
+      </main>
+
+      <aside class="article-side">
+        <section class="side-card author-card">
+          <div class="author-row">
+            <div class="author-avatar">
+              <img v-if="authorProfile?.avatarUrl" :src="authorProfile.avatarUrl" alt="author avatar" />
+              <span v-else>{{ authorAvatarLabel }}</span>
+            </div>
+            <div>
+              <h3>{{ authorProfile?.name || `User ${article?.userId || ''}` }}</h3>
+              <p>{{ authorProfile?.sign || '这个作者暂时还没有留下签名。' }}</p>
+            </div>
+          </div>
+          <button class="side-primary" @click="router.push({ path: '/', query: { userId: String(article?.userId || '') } })">
+            查看作者文章
+          </button>
+        </section>
+
+        <section v-if="outlineItems.length > 0" class="side-card outline-card">
+          <h3>目录</h3>
+          <button
+            v-for="item in outlineItems"
+            :key="item.id"
+            class="outline-item"
+            :class="`level-${item.level}`"
+            @click="scrollToOutline(item)"
+          >
+            {{ item.text }}
+          </button>
+        </section>
+
+        <section class="side-card stats-card">
+          <h3>文章信息</h3>
+          <dl>
+            <div>
+              <dt>发布时间</dt>
+              <dd>{{ article ? formatDateTime(article.publishedAt) : '-' }}</dd>
+            </div>
+            <div>
+              <dt>点赞</dt>
+              <dd>{{ article?.likeCount || 0 }}</dd>
+            </div>
+            <div>
+              <dt>收藏</dt>
+              <dd>{{ article?.favoriteCount || 0 }}</dd>
+            </div>
+            <div>
+              <dt>评论</dt>
+              <dd>{{ rootTotal }}</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+    </div>
   </section>
 </template>
 
@@ -592,11 +765,57 @@ watch(rootPage, loadRootCommentPage)
   gap: 14px;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+.action-rail,
+.article-side {
+  position: sticky;
+  top: 92px;
+}
+
+.action-rail {
+  display: grid;
+  gap: 12px;
+}
+
+.rail-btn {
+  border: 1px solid var(--line-soft);
+  border-radius: 18px;
+  background: #fff;
+  color: var(--ink-muted);
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 12px 8px;
+  cursor: pointer;
+}
+
+.rail-btn strong {
+  color: var(--ink-strong);
+}
+
+.rail-btn.active {
+  border-color: rgba(30, 128, 255, 0.24);
+  color: var(--brand);
+}
+
+.article-main,
+.article-side {
+  display: grid;
+  gap: 16px;
+}
+
 .article-card,
 .comment-panel,
+.side-card,
 .panel {
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-md);
+  border-radius: 16px;
   background: #fff;
 }
 
@@ -606,138 +825,183 @@ watch(rootPage, loadRootCommentPage)
 
 .cover {
   width: 100%;
-  max-height: 320px;
+  max-height: 360px;
   object-fit: cover;
   border-bottom: 1px solid var(--line-soft);
 }
 
 .article-head {
-  padding: 16px 18px 6px;
+  padding: 24px 28px 12px;
 }
 
-.article-head h1 {
-  margin: 0;
-  color: var(--ink-strong);
-}
-
-.article-head p {
-  margin: 8px 0 0;
-  color: var(--ink-main);
-}
-
-.meta {
-  margin-top: 10px;
+.article-meta-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 14px;
   color: var(--ink-muted);
-  font-size: 0.86rem;
+  font-size: 0.9rem;
 }
 
-.interactions {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-}
-
-.interactions button,
-.comment-actions button,
-.comment-form button,
-.reply-form button,
-.pager button {
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--ink-main);
-  padding: 7px 12px;
+.author-jump {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--brand);
   cursor: pointer;
 }
 
-.interactions button.active,
-.comment-actions button.active {
-  border-color: rgba(20, 88, 166, 0.45);
-  color: var(--brand);
+.article-head h1 {
+  margin: 14px 0 10px;
+  color: var(--ink-strong);
+  font-size: clamp(1.8rem, 1.3rem + 1.6vw, 2.55rem);
+  line-height: 1.28;
 }
 
-.comment-actions button.danger {
-  border-color: rgba(195, 57, 42, 0.35);
-  color: var(--danger);
+.summary {
+  margin: 0;
+  color: var(--ink-main);
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.article-body-shell {
+  padding: 0 28px 28px;
 }
 
 .md-body {
-  padding: 8px 18px 18px;
   color: var(--ink-main);
-  line-height: 1.75;
+  line-height: 1.9;
 }
 
-.md-body :deep(pre) {
-  background: #121821;
-  color: #f2f8ff;
-  border-radius: 10px;
-  padding: 12px;
-  overflow: auto;
+.md-body :deep(h1),
+.md-body :deep(h2),
+.md-body :deep(h3) {
+  color: var(--ink-strong);
+  margin-top: 1.8em;
+  scroll-margin-top: 96px;
+}
+
+.md-body :deep(img) {
+  max-width: 100%;
+  border-radius: 16px;
+}
+
+.md-body :deep(blockquote) {
+  margin: 1.2rem 0;
+  padding: 12px 16px;
+  border-left: 4px solid var(--brand);
+  background: #f7fbff;
+  color: var(--ink-main);
 }
 
 .comment-panel {
-  padding: 14px;
+  padding: 22px 24px;
   display: grid;
-  gap: 12px;
+  gap: 18px;
 }
 
 .comment-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: end;
 }
 
 .comment-head h2 {
   margin: 0;
+  color: var(--ink-strong);
+}
+
+.comment-head p {
+  margin: 6px 0 0;
+  color: var(--ink-muted);
 }
 
 .comment-form,
 .reply-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .comment-form textarea,
 .reply-form textarea {
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  padding: 10px;
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: #f7f8fa;
+  padding: 14px 16px;
   resize: vertical;
+  color: var(--ink-strong);
+}
+
+.comment-form textarea:focus,
+.reply-form textarea:focus {
+  outline: none;
+  border-color: rgba(30, 128, 255, 0.3);
+  background: #fff;
+}
+
+.comment-form-foot,
+.reply-form-actions,
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comment-form-foot span {
+  color: var(--ink-muted);
+  font-size: 0.86rem;
+}
+
+.comment-form button,
+.reply-form button,
+.pager button,
+.side-primary,
+.outline-item {
+  border: none;
+  background: transparent;
+  font: inherit;
+}
+
+.comment-form button,
+.reply-form button,
+.pager button,
+.side-primary {
+  border-radius: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.comment-form button,
+.reply-form button,
+.side-primary {
+  background: linear-gradient(135deg, #1e80ff, #5ea1ff);
+  color: #fff;
+}
+
+.reply-form .secondary {
+  background: #f4f7fb;
+  color: var(--ink-main);
 }
 
 .comment-list {
   display: grid;
-  gap: 10px;
-}
-
-.comment-thread {
-  display: grid;
-  gap: 8px;
-}
-
-.subtle {
-  color: var(--ink-muted);
-  font-size: 0.9rem;
 }
 
 .root-reply-form {
-  margin-left: 16px;
-}
-
-.reply-form-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.reply-form-actions .secondary {
-  border-color: var(--line-soft);
+  margin-left: 54px;
+  margin-top: -4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .panel {
-  padding: 14px;
+  padding: 18px;
+}
+
+.panel-muted {
+  background: #fafafa;
 }
 
 .error-text {
@@ -745,15 +1009,144 @@ watch(rootPage, loadRootCommentPage)
   color: var(--danger);
 }
 
-.pager {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
+.side-card {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
 }
 
-.pager button:disabled {
-  opacity: 0.55;
+.author-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.author-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f7d79b, #f39db9 55%, #93c7ff);
+  color: #24324a;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.author-card h3,
+.outline-card h3,
+.stats-card h3 {
+  margin: 0;
+  color: var(--ink-strong);
+}
+
+.author-card p {
+  margin: 6px 0 0;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.outline-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: var(--ink-main);
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.outline-item.level-2 {
+  padding-left: 12px;
+}
+
+.outline-item.level-3 {
+  padding-left: 24px;
+  color: var(--ink-muted);
+}
+
+.stats-card dl {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.stats-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stats-card dt {
+  color: var(--ink-muted);
+}
+
+.stats-card dd {
+  margin: 0;
+  color: var(--ink-strong);
+  font-weight: 600;
+}
+
+.pager {
+  justify-content: center;
+}
+
+.pager button {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.pager button:disabled,
+.rail-btn:disabled {
+  opacity: 0.45;
   cursor: default;
+}
+
+@media (max-width: 1180px) {
+  .detail-grid {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .article-side {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-rail {
+    position: static;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .article-body-shell,
+  .article-head {
+    padding-inline: 18px;
+  }
+
+  .comment-panel {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  .comment-form-foot,
+  .reply-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .root-reply-form {
+    margin-left: 0;
+  }
 }
 </style>
