@@ -1,0 +1,8 @@
+.git
+.idea
+.playwright-cli
+
+frontend/frontend/node_modules
+frontend/frontend/dist
+
+backend/target
